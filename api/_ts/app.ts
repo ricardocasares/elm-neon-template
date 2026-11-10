@@ -29,7 +29,10 @@ app.ports.interopFromElm.subscribe((fromElm) => {
       );
 
     case "Log":
-      return console.error(`[elm] ${fromElm.message}`);
+      return console[fromElm.level](fromElm.message);
+
+    default:
+      return fromElm satisfies never;
   }
 });
 

@@ -21,7 +21,7 @@ export interface ElmApp {
   };
 }
 
-export type FromElm = { message : string; tag : "Log" } | { body : string; headers : [ string, string ][]; resolve : JsonValue; status : number; tag : "Respond" };
+export type FromElm = { level : "error" | "warn" | "info"; message : string; tag : "Log" } | { body : string; headers : [ string, string ][]; resolve : JsonValue; status : number; tag : "Respond" };
 
 export type ToElm = { request : ({ method : string } & { path : string[] } & { query : { [key: string]: string } } & { headers : { [key: string]: string } } & { body : string }); resolve : JsonValue; tag : "Request" };
 

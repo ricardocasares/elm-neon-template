@@ -202,6 +202,9 @@ committed migrations, whose hash covers their comments.
   package a `shared/` module imports must be in both `elm.json` files.
 - Each project has its own `InteropDefinitions` and `InteropPorts`, typed with
   elm-ts-interop. After changing either `InteropDefinitions.elm`, run `bun run types`.
+- `app.ts` and `client/main.ts` handle `FromElm` in a `switch` on `tag` that ends in
+  `default: return fromElm satisfies never;`, so a new `FromElm` variant doesn't type
+  check until the TypeScript side handles it. Keep that `default` in every such `switch`.
 
 ### Shared Elm code
 
@@ -240,10 +243,17 @@ committed migrations, whose hash covers their comments.
   `dist/server/app.js`, then the browser app (`client` environment) into
   `dist/client/`, one after the other: Elm processes that fill an empty `~/.elm` at once
   corrupt it.
+- The server logs with `log level message` in `api/src/Main.elm`, where the level is
+  `Interop.Info`, `Interop.Warn` or `Interop.Error`. `app.ts` passes the message as it is
+  to `console.info`, `console.warn` or `console.error`, which Vercel shows as the log's
+  level: write the whole message in Elm, as `app.ts` adds nothing. At startup the server
+  logs at `info` where it sends queries, at `warn` when it has no database, and at
+  `error` when its flags don't decode. A slow health check logs at `warn`; a failed one,
+  and every database error, at `error`.
 - The server reaches Postgres through the Neon driver; the queries are in
   `api/src/Db.elm`. The server reads `DATABASE_URL`, and `NEON_ENDPOINT` to send queries
   to a local proxy instead of Neon. Routes that query through `withDb` answer 503 without
-  `DATABASE_URL`, and 500 on a database error, logged as `[elm] Database error: ...`.
+  `DATABASE_URL`, and 500 on a database error, logged as `Database error: ...`.
   JSON responses carry `cache-control: no-store`.
 - `GET /api/health` follows the IETF health check draft
   (`application/health+json`): `status` is `pass`, `warn` or `fail`, and `checks.database` has
@@ -253,8 +263,8 @@ committed migrations, whose hash covers their comments.
   It answers `warn` when the query took longer than `slowAfter` (1 second), which is
   still a 200, as the draft says: the database works, slowly. It answers 200 on pass and
   warn and 503 on fail, which is what load balancers and uptime monitors look for. The
-  browser app shows the status as a green, yellow or red dot. `output` is a short public reason (timed out, unreachable, the query
-  failed); the full error is logged as `[elm] Health check failed: ...`, since Postgres
+  browser app shows the status as a green, yellow or red dot. `output` is a short public
+  reason (timed out, unreachable, the query failed); the full error is logged as `Health check failed: ...`, since Postgres
   messages can name roles and tables. The latency is measured with `Time.now` around the
   query, so it includes the HTTP hop to Neon, and a first request after scale to zero
   includes the compute starting.

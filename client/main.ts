@@ -63,5 +63,8 @@ app.ports.interopFromElm.subscribe((fromElm) => {
           message: String(error),
         });
       }
+
+    default:
+      return fromElm satisfies never;
   }
 });

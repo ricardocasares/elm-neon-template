@@ -1,4 +1,4 @@
-module InteropDefinitions exposing (Flags, FromElm(..), Request, Resolver, Response, ToElm(..), interop)
+module InteropDefinitions exposing (Flags, FromElm(..), Level(..), Request, Resolver, Response, ToElm(..), interop)
 
 import Dict exposing (Dict)
 import Json.Encode as Encode
@@ -24,7 +24,13 @@ type ToElm
 
 type FromElm
     = Respond Resolver Response
-    | Log String
+    | Log Level String
+
+
+type Level
+    = Info
+    | Warn
+    | Error
 
 
 type alias Flags =
@@ -95,8 +101,8 @@ fromElm =
                 Respond resolver response ->
                     respond ( resolver, response )
 
-                Log message ->
-                    log message
+                Log level message ->
+                    log ( level, message )
         )
         |> TsEncode.variantObject "Respond"
             [ TsEncode.required "resolve" Tuple.first resolverEncoder
@@ -106,7 +112,30 @@ fromElm =
                 (TsEncode.list (TsEncode.tuple TsEncode.string TsEncode.string))
             , TsEncode.required "body" (Tuple.second >> .body) TsEncode.string
             ]
-        |> TsEncode.variantObject "Log" [ TsEncode.required "message" identity TsEncode.string ]
+        |> TsEncode.variantObject "Log"
+            [ TsEncode.required "level" Tuple.first levelEncoder
+            , TsEncode.required "message" Tuple.second TsEncode.string
+            ]
+        |> TsEncode.buildUnion
+
+
+levelEncoder : Encoder Level
+levelEncoder =
+    TsEncode.union
+        (\info warn error value ->
+            case value of
+                Info ->
+                    info
+
+                Warn ->
+                    warn
+
+                Error ->
+                    error
+        )
+        |> TsEncode.variantLiteral (Encode.string "info")
+        |> TsEncode.variantLiteral (Encode.string "warn")
+        |> TsEncode.variantLiteral (Encode.string "error")
         |> TsEncode.buildUnion
 
 

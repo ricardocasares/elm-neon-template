@@ -31,14 +31,30 @@ type alias Model =
 
 init : Decode.Value -> ( Model, Cmd Msg )
 init flags =
-    let
-        config =
-            InteropPorts.decodeFlags flags
-                |> Result.withDefault { databaseUrl = Nothing, neonEndpoint = Nothing }
-    in
-    ( { db = Db.connect config }
-    , Cmd.none
-    )
+    case InteropPorts.decodeFlags flags of
+        Ok config ->
+            let
+                db =
+                    Db.connect config
+            in
+            ( { db = db }
+            , case db of
+                Ok connection ->
+                    log Interop.Info ("Sending queries to " ++ Neon.endpoint connection)
+
+                Err problem ->
+                    log Interop.Warn ("No database, so database routes answer 503: " ++ problem)
+            )
+
+        Err problem ->
+            ( { db = Err "The server's flags did not decode." }
+            , log Interop.Error ("Bad flags: " ++ Decode.errorToString problem)
+            )
+
+
+log : Interop.Level -> String -> Cmd msg
+log level message =
+    InteropPorts.fromElm (Interop.Log level message)
 
 
 
@@ -78,27 +94,34 @@ update msg model =
             ( model
             , Cmd.batch
                 [ InteropPorts.fromElm (Interop.Respond resolver (error 500 "Database error."))
-                , InteropPorts.fromElm (Interop.Log ("Database error: " ++ Neon.errorToString problem))
+                , log Interop.Error ("Database error: " ++ Neon.errorToString problem)
                 ]
             )
 
         DatabaseChecked resolver ( latency, Ok () ) ->
-            ( model
-            , InteropPorts.fromElm
-                (Interop.Respond resolver
-                    (health
-                        (if latency > slowAfter then
-                            { status = Api.Warn
-                            , latencyMs = Just latency
-                            , output = Just ("Slower than " ++ String.fromInt slowAfter ++ " ms.")
-                            }
-
-                         else
-                            { status = Api.Pass, latencyMs = Just latency, output = Nothing }
+            if latency > slowAfter then
+                ( model
+                , Cmd.batch
+                    [ InteropPorts.fromElm
+                        (Interop.Respond resolver
+                            (health
+                                { status = Api.Warn
+                                , latencyMs = Just latency
+                                , output = Just ("Slower than " ++ String.fromInt slowAfter ++ " ms.")
+                                }
+                            )
                         )
+                    , log Interop.Warn ("Health check slow: the database took " ++ String.fromInt latency ++ " ms.")
+                    ]
+                )
+
+            else
+                ( model
+                , InteropPorts.fromElm
+                    (Interop.Respond resolver
+                        (health { status = Api.Pass, latencyMs = Just latency, output = Nothing })
                     )
                 )
-            )
 
         DatabaseChecked resolver ( latency, Err problem ) ->
             ( model
@@ -107,7 +130,7 @@ update msg model =
                     (Interop.Respond resolver
                         (health { status = Api.Fail, latencyMs = Just latency, output = Just (failure problem) })
                     )
-                , InteropPorts.fromElm (Interop.Log ("Health check failed: " ++ Neon.errorToString problem))
+                , log Interop.Error ("Health check failed: " ++ Neon.errorToString problem)
                 ]
             )
 
