@@ -125,15 +125,24 @@ migrations: `/api/health` needs no tables.
 ### Environment
 
 `.env` holds the local settings: `DATABASE_URL`, `NEON_ENDPOINT`, `SHADOW_DATABASE_URL`
-and `ROOT_DATABASE_URL`. It is not committed: copy it from `.env.example`, which is, and
-keep the two in step when you add a variable. Bun loads it, then `.env.local` over it, whenever it runs a
-file itself: `bun <file>`, which is how `dev:vite`, `preview` and `db` run Vite and
-graphile-migrate. A bin started as plain `vite`, `bun --bun <bin>` or `bunx` runs as
-`node` and does not get `.env`: in `bun dev`, every database route would answer 503. Keep
-that form to scripts that need no `.env`, like `build:vite`. Variables set in the shell
-win over both files. `.env.example` holds only local values; put anything private in
-`.env` or `.env.local`. `vercel env pull` writes `.env.local`, so it
-would point local runs at the Vercel database.
+and `ROOT_DATABASE_URL`. It is not committed: copy it from `.env.example`, which is.
+
+Keep `.env.example` in sync with `.env`: they list the same variables, in the same order.
+When you add, rename or remove a variable in `.env`, make the same change in
+`.env.example` in the same commit, with a value that works on a fresh checkout after the
+setup in Database above, never a real secret. `.env.example` is how a new clone learns
+which variables exist, and `.scripts/neon.sh` stops with "Copy .env.example to .env" when
+one is missing. Variables that only Vercel sets, like `DATABASE_URL_UNPOOLED`, stay out
+of both.
+
+Bun loads `.env`, then `.env.local` over it, whenever it runs a file itself:
+`bun <file>`, which is how `dev:vite`, `preview` and `db` run Vite and graphile-migrate.
+A bin started as plain `vite`, `bun --bun <bin>` or `bunx` runs as `node` and does not
+get `.env`: in `bun dev`, every database route would answer 503. Keep that form to
+scripts that need no `.env`, like `build:vite`. Variables set in the shell win over both
+files. Put anything private in `.env` or `.env.local`, never in `.env.example`.
+`vercel env pull` writes `.env.local`, so it would point local runs at the Vercel
+database.
 
 ## Find components
 
