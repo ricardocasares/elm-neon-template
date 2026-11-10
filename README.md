@@ -3,6 +3,8 @@
 Full-stack Elm: an Elm browser app, an Elm HTTP server and an Elm Postgres driver, deployed to
 Vercel on Neon.
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fricardocasares%2Felm-neon-template&project-name=elm-neon-template&repository-name=elm-neon-template&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%2C%22protocol%22%3A%22storage%22%7D%5D)
+
 | Part     | Where      | Built with                                                            |
 | -------- | ---------- | --------------------------------------------------------------------- |
 | Browser  | `client/`  | Elm, Vite, Tailwind, [elmcn](https://github.com/ricardocasares/elmcn) |
