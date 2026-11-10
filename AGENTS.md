@@ -35,9 +35,7 @@ database.
 ## Rules
 
 - **Bun, not npm**: `bun add -d <pkg>`.
-- **No comments** in code or config (Elm incl. `{-| -}`, TS, CSS, SQL, shell, `.env`,
-  `bunfig.toml`...). Say it with names and types; put constraints and reasons in this
-  file. Remove comments from any file you touch. Exceptions: tool directives
+- **No comments** in code or config. Exceptions: tool directives
   (`// @ts-expect-error`, `/// <reference ... />`) and generated or signed files (`.gmrc`,
   `*.elm.d.ts`, committed migrations).
 - **`.env.example` mirrors `.env`**: same variables, same order, changed in the same
@@ -87,9 +85,10 @@ database.
 
 ## Local database
 
-`app` on Postgres.app (`localhost:5432`), reached through Neon's HTTP proxy in Docker at
-`NEON_ENDPOINT`, as production reaches Neon. One-time setup (`psql` is in
-`/Applications/Postgres.app/Contents/Versions/latest/bin`):
+Needs a running Postgres on `localhost:5432` with a `postgres` superuser, and its client
+tools (`psql`, `pg_dump`) on `PATH`. The app uses the `app` database, reached through
+Neon's HTTP proxy in Docker at `NEON_ENDPOINT`, as production reaches Neon. One-time
+setup:
 
 ```sh
 cp .env.example .env
@@ -108,7 +107,7 @@ bun db migrate
   superuser (`ROOT_DATABASE_URL`, `localhost` → `host.docker.internal`); with the app role
   every query fails with "Control plane request failed". It fails only without Docker or
   on a port clash, which stops `bun dev`; a failed `SELECT 1` only warns.
-- One proxy serves every database on Postgres.app. It holds connections open, so
+- One proxy serves every database on that Postgres. It holds connections open, so
   `bun db reset --erase` needs `docker stop neon-http-proxy` first. ~50 ms per query.
 - The template has no migrations: `/api/health` needs no tables.
 

@@ -12,8 +12,8 @@ Vercel on Neon.
 
 ## Quick start
 
-Needs [Bun](https://bun.com), [Postgres.app](https://postgresapp.com) and
-[Docker](https://www.docker.com), all running.
+Needs [Bun](https://bun.com), [Docker](https://www.docker.com) and a running Postgres on
+`localhost:5432`, with `psql` and `pg_dump` on `PATH`.
 
 ```sh
 gh repo create my-app --template ricardocasares/elm-neon-template --private --clone
@@ -73,18 +73,6 @@ Open http://localhost:5173. Then rename `name` in `package.json` and `<title>` i
 bun db watch                              # applies migrations/current.sql on every save
 bun db commit --message "Create users"    # turns it into a committed migration
 ```
-
-## Deploy
-
-1. Neon: a project with a `preview` branch off `main`.
-2. Vercel: `vercel link`, then add each branch's connection strings:
-
-   | Vercel     | Neon branch | `DATABASE_URL` | `DATABASE_URL_UNPOOLED` |
-   | ---------- | ----------- | -------------- | ----------------------- |
-   | Production | `main`      | pooled         | direct                  |
-   | Preview    | `preview`   | pooled         | direct                  |
-
-3. `vercel deploy`, or `vercel deploy --prod`. Each build migrates its own branch first.
 
 ## More
 

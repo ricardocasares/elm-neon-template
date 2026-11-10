@@ -80,6 +80,6 @@ case "$answer" in
     ;;
   *)
     echo "neon: DATABASE_URL fails through the proxy: $(printf '%s' "$answer" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p')" >&2
-    echo "neon: is Postgres.app running, with the role and database from DATABASE_URL?" >&2
+    echo "neon: is Postgres running, with the role and database from DATABASE_URL?" >&2
     ;;
 esac
