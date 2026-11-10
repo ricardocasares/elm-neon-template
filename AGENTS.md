@@ -1,401 +1,211 @@
 # AGENTS.md
 
-One Vite app with an Elm browser app and an Elm HTTP server, run by Bun:
+A Vite app, run by Bun: an Elm browser app and an Elm HTTP server sharing one API contract,
+on Postgres (Neon), deployed to Vercel.
 
-| Path          | What it is                                                                                                                                                                                                              |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `client/`     | The Elm browser app, styled with elmcn. `elm.json` at the root.                                                                                                                                                         |
-| `api/`        | An HTTP server written in Elm, and its Vercel Function `api/index.ts`. Its own `api/elm.json`.                                                                                                                          |
-| `api/src/`    | The server's Elm: `Main.elm`, `Db.elm`, and `Neon.elm`, a driver for Neon Postgres over HTTP.                                                                                                                           |
-| `api/_ts/`    | The server's TypeScript: `app.ts`, `xhr.ts`, and `dev.ts` for `bun dev` and `bun run preview`.                                                                                                                          |
-| `shared/`     | Elm modules both share: routes, endpoints, JSON codecs.                                                                                                                                                                 |
-| `migrations/` | The database schema, as Graphile Migrate migrations. Config in `.gmrc`.                                                                                                                                                 |
-| `.agents/`    | Agent skills: `neon`, `neon-postgres` (`bunx neon@latest skills`); `elm-patterns`, `postgres-rls-multi-tenancy` (`npx skills add ricardocasares/skills`). `skills-lock.json` tracks them. `.claude` is a symlink to it. |
+## Layout
 
-Vercel turns every `.js` and `.ts` file under `api/` into a function, except in folders
-and files whose names start with `_`. Keep the server's TypeScript in `api/_ts`, so
-`api/index.ts` stays the only function. `api/src` holds only Elm and the generated
-`Main.elm.d.ts`, which Vercel skips.
-
-The browser app is styled with [elmcn](https://github.com/ricardocasares/elmcn): shadcn/ui
-components for Elm. Like shadcn/ui, elmcn is not a package. The CLI copies a component's
-source into `client/UI/<Name>.elm`, and from then on the code is ours to read and change.
+| Path               | What                                                                       |
+| ------------------ | -------------------------------------------------------------------------- |
+| `client/`          | Browser app (root `elm.json`). `client/UI/`: elmcn components              |
+| `shared/`          | Elm both sides compile: `Api` (routes, endpoints, codecs)                  |
+| `api/src/`         | Server Elm (`api/elm.json`): `Main`, `Db`, `Neon` driver                   |
+| `api/_ts/`         | Server TypeScript: `app.ts` (starts Elm), `xhr.ts`, `dev.ts` (Vite plugin) |
+| `api/index.ts`     | The only Vercel Function                                                   |
+| `migrations/`      | Graphile Migrate (`.gmrc`)                                                 |
+| `.scripts/neon.sh` | Starts the local Neon proxy                                                |
+| `.agents/`         | Agent skills, tracked by `skills-lock.json`; `.claude` links here          |
 
 ## Commands
 
 ```sh
-bun install         # install
-bun dev             # the app on :5173, with the Elm server answering /api
-bun run build       # browser app into dist/client/, server into dist/server/
-bun run preview     # the built app on :4173: dist/client/, with dist/server/app.js on /api
-bun check           # type check the browser app and the server
-bun fmt             # format everything but generated files (--check only reports)
-bun db <command>    # graphile-migrate, see Database
-bun run dev:proxy   # start the local Neon proxy in Docker; bun dev runs it too
+bun dev                 # types + dev:proxy + dev:vite (:5173, Elm server on /api)
+bun run dev:proxy       # local Neon proxy in Docker, then SELECT 1 with DATABASE_URL
+bun run build           # types:api, types:app, check, then vite build (server, then client)
+bun run preview         # the build on :4173
+bun run types           # regenerate *.elm.d.ts after changing an InteropDefinitions.elm
+bun check               # type-check both TypeScript projects
+bun fmt                 # format (--check to only report)
+bun db <command>        # graphile-migrate: migrate, watch, commit, uncommit, status, reset --erase
 ```
 
-`dev` runs `bun run types`, `dev:proxy` and `dev:vite` (Vite) side by side.
-`dev:proxy` exits once the proxy runs. If it fails, which it does only when Docker is
-missing or not running or another container holds port 4445, `bun run --parallel` stops
-the others, so `bun dev` stops with it.
+CI (`.github/workflows/ci.yml`) runs `bun fmt --check` and `bun run build`; it needs no
+database.
 
-`build` runs `types:api` and `types:app` one after the other, then `check`, then
-`vite build`: on a fresh Vercel machine `~/.elm` is empty, and the two generators filling
-it at once corrupted `elm/json` ("PROBLEM BUILDING DEPENDENCIES"). elm-ts-interop still
-exits 0 then, so the build would carry on silently. `types` regenerates the TypeScript
-types for both Elm programs at once: `types:app` and `types:api`, through
-`bun run --parallel types:*`. Run one on its own with `bun run types:api`. elm-ts-interop
-compiles with the `elm.json` of the folder it runs in, so `types:api` must `cd api`:
-from the root it would compile the browser's `InteropDefinitions` into
-`api/src/Main.elm.d.ts`.
+## Rules
 
-Use `bun`, not npm: `bun add -d <pkg>`.
+- **Bun, not npm**: `bun add -d <pkg>`.
+- **No comments** in code or config (Elm incl. `{-| -}`, TS, CSS, SQL, shell, `.env`,
+  `bunfig.toml`...). Say it with names and types; put constraints and reasons in this
+  file. Remove comments from any file you touch. Exceptions: tool directives
+  (`// @ts-expect-error`, `/// <reference ... />`) and generated or signed files (`.gmrc`,
+  `*.elm.d.ts`, committed migrations).
+- **`.env.example` mirrors `.env`**: same variables, same order, changed in the same
+  commit, with values that work on a fresh checkout and never a secret. Vercel-only
+  variables (`DATABASE_URL_UNPOOLED`) stay out of both.
+- **SQL values are parameters**: never `++` a request value into SQL; pass `$n` with
+  `Neon.text`, `Neon.int`... Only constants may be joined in. An identifier that depends
+  on a request is picked from a fixed list.
 
-CI (`.github/workflows/ci.yml`) runs `bun fmt --check` and `bun run build` on every push
-to `main` and every pull request. The build needs no database: only Vercel's build
-command migrates.
+  ```elm
+  Neon.execute ("UPDATE users SET name = '" ++ name ++ "'") []   -- injectable
+  Neon.execute "UPDATE users SET name = $1" [ Neon.text name ]    -- safe
+  ```
 
-`bun check` and `bun fmt` are Bun's own type checker and formatter. `bun check` runs
-the `check` script, which covers both projects (`tsconfig.json` and
-`api/tsconfig.json`). `bun fmt` formats TypeScript, JSON, CSS, HTML and Markdown,
-Prettier-style at `printWidth = 100` (`bunfig.toml`). It skips what `.gitignore` lists
-(`dist/`, `elm-stuff/`) and the generated `*.elm.d.ts` (`.prettierignore`), and
-can't parse SQL, `.gmrc` or `bun.lock`, so it never touches the signed migrations. Bun
-has no linter.
+- **Migrations**: edit `migrations/current.sql` under `bun db watch`, idempotent
+  (`IF NOT EXISTS`) since it reruns on save, then `bun db commit`. Never edit
+  `migrations/committed/`: they are hash-signed.
+- **Keep the Elm projects apart**: the root `elm.json` never lists `api/` folders, so the
+  database password can't reach the browser bundle. A package `shared/` imports goes in
+  both `elm.json`s; server packages: `elm install` inside `api/`.
+- **Every route is handled**: `Api.Route` is matched without a wildcard, so a new route
+  doesn't compile until the server handles it. Keep `Api.parse` in step with
+  `Api.method` and `Api.path`.
+- **Every `FromElm` is handled**: the port handlers in `app.ts` and `client/main.ts` take
+  `msg` and end `switch (msg.tag)` with `default: return msg satisfies never;`.
+- **UI**: use the elmcn registry component instead of writing one; Phosphor
+  (`phosphor-icons/phosphor-elm`, `Regular`) instead of hand-written SVG; `sr-only` text
+  on icon-only controls.
+- **Vercel functions**: every `.ts` under `api/` becomes one unless its name or folder
+  starts with `_`. Server TypeScript lives in `api/_ts`; `app.ts` uses Web APIs only.
 
-### Database
+## Environment
 
-`bun db` is graphile-migrate:
+| Variable              | Used by                                                  |
+| --------------------- | -------------------------------------------------------- |
+| `DATABASE_URL`        | Server, migrations, `dev:proxy`'s check                  |
+| `NEON_ENDPOINT`       | Server (local proxy instead of Neon), `dev:proxy`'s port |
+| `SHADOW_DATABASE_URL` | `bun db watch` and `commit`                              |
+| `ROOT_DATABASE_URL`   | `bun db reset`, the proxy's own connection               |
+
+- Bun loads `.env`, then `.env.local`, then the shell wins, but only when it runs a file
+  itself (`bun <file>`): that's why `dev:vite`, `preview` and `db` call
+  `bun node_modules/...`. Plain `vite`, `bunx` or `bun --bun <bin>` run as `node` without
+  `.env`, and every database route answers 503. `bun run` doesn't pass `.env` to scripts,
+  so `neon.sh` reads the files itself, in the same order.
+- `vercel env pull` writes `.env.local`, pointing local runs at the Vercel database.
+
+## Local database
+
+`app` on Postgres.app (`localhost:5432`), reached through Neon's HTTP proxy in Docker at
+`NEON_ENDPOINT`, as production reaches Neon. One-time setup (`psql` is in
+`/Applications/Postgres.app/Contents/Versions/latest/bin`):
 
 ```sh
-bun db migrate      # apply committed migrations that haven't run yet
-bun db watch        # apply migrations/current.sql to the local database on every save
-bun db commit --message "Add due dates"   # turn current.sql into a committed migration
-bun db uncommit     # move the last committed migration back into current.sql
-bun db status       # which migrations are pending
-bun db reset --erase   # drop the local database and rebuild it from the migrations
-```
-
-To change the schema, edit `migrations/current.sql` while `bun db watch` runs, keeping
-it idempotent (`IF NOT EXISTS`, `DROP ... IF EXISTS`), since `watch` runs it again on
-every save. Then `bun db commit`.
-
-The local database is the `app` database on Postgres.app (`localhost:5432`), behind
-Neon's own HTTP proxy in Docker on `http://localhost:4445/sql`. Set it up once:
-
-```sh
+cp .env.example .env
 bun run dev:proxy
-
-# The role and database. The proxy checks the password, so the role needs one. One
-# SCRAM iteration keeps that check at ~9 ms instead of ~100 ms per query: fine for
-# this local password, never for a real one.
 psql postgres://postgres@localhost:5432/postgres \
   -c "SET scram_iterations = 1" \
   -c "CREATE ROLE app LOGIN PASSWORD 'app'" \
   -c "CREATE DATABASE app OWNER app"
-
-cp .env.example .env
 bun db migrate
 ```
 
-`psql` is Postgres.app's, in `/Applications/Postgres.app/Contents/Versions/latest/bin`.
+- The proxy checks passwords, so the role needs one; one SCRAM iteration makes that ~9 ms
+  instead of ~100 ms. Local only.
+- `neon.sh` reuses any proxy container already on the port, or starts/creates
+  `neon-http-proxy` (`--restart unless-stopped`). The proxy's own connection must be a
+  superuser (`ROOT_DATABASE_URL`, `localhost` → `host.docker.internal`); with the app role
+  every query fails with "Control plane request failed". It fails only without Docker or
+  on a port clash, which stops `bun dev`; a failed `SELECT 1` only warns.
+- One proxy serves every database on Postgres.app. It holds connections open, so
+  `bun db reset --erase` needs `docker stop neon-http-proxy` first. ~50 ms per query.
+- The template has no migrations: `/api/health` needs no tables.
 
-`dev:proxy` runs `.scripts/neon.sh`. `bun run` doesn't pass `.env` to a script, so the
-script reads its settings itself, as Bun would: the shell first, then `.env.local`, then
-`.env`. It takes the port from `NEON_ENDPOINT`. If a container of the proxy image already
-publishes that port, it uses that one, whatever its name; otherwise it starts the
-`neon-http-proxy` container, creating it the first time with `--restart unless-stopped`.
-The proxy checks each query's password against Postgres through a connection of its own,
-which must be a superuser's (`DATABASE_URL`'s role gets "Control plane request failed"),
-so the script gives it `ROOT_DATABASE_URL`, with `localhost` changed to
-`host.docker.internal` for Docker to reach the Mac, and `PGPASSWORD=trust`, which
-Postgres.app ignores for local connections. Last, it runs `SELECT 1` with `DATABASE_URL`
-through the proxy, retrying while a new container starts, and warns, without failing, when
-that doesn't answer: Postgres.app stopped, or the role or database is missing.
+## Browser app
 
-The proxy serves every database on Postgres.app, since each request carries its own
-connection string, so one container is enough for several projects. It keeps connections
-to `app` open, so `bun db reset --erase` fails with "being accessed by other users" while
-it runs: `docker stop neon-http-proxy` first, `bun run dev:proxy` after. Queries through
-the proxy take ~50 ms, the hop from Docker to the Mac. Committed files in
-`migrations/committed/` are signed with a hash: never edit them, add a new migration
-instead. The template ships with no
-migrations: `/api/health` needs no tables.
+- `client/Main.elm`, started by `client/main.ts`. `client/main.css` is the only
+  stylesheet, linked from `index.html`: don't import CSS from TypeScript.
+- Calls the server only through `ApiClient.request` with an `Api.Endpoint`. On an error
+  status it decodes `Api.errorDecoder`, then the endpoint's response (the health report
+  comes with a 503).
+- The page: the Server card (one row per `Api.checks`, release and region in the
+  footer) and a theme toggle (`UI.Tabs` without panels, saved to `localStorage` via the
+  `WriteToLocalStorage` port, read back from the flags).
+- No layout shift while loading: rows come from `Api.checkNames` with `UI.Skeleton`s,
+  refreshes keep the last report, an empty footer keeps its height. Name checks only in
+  `Api.namedChecks`.
 
-### Environment
+### elmcn components
 
-`.env` holds the local settings: `DATABASE_URL`, `NEON_ENDPOINT`, `SHADOW_DATABASE_URL`
-and `ROOT_DATABASE_URL`. It is not committed: copy it from `.env.example`, which is.
-
-Keep `.env.example` in sync with `.env`: they list the same variables, in the same order.
-When you add, rename or remove a variable in `.env`, make the same change in
-`.env.example` in the same commit, with a value that works on a fresh checkout after the
-setup in Database above, never a real secret. `.env.example` is how a new clone learns
-which variables exist, and `.scripts/neon.sh` stops with "Copy .env.example to .env" when
-one is missing. Variables that only Vercel sets, like `DATABASE_URL_UNPOOLED`, stay out
-of both.
-
-Bun loads `.env`, then `.env.local` over it, whenever it runs a file itself:
-`bun <file>`, which is how `dev:vite`, `preview` and `db` run Vite and graphile-migrate.
-A bin started as plain `vite`, `bun --bun <bin>` or `bunx` runs as `node` and does not
-get `.env`: in `bun dev`, every database route would answer 503. Keep that form to
-scripts that need no `.env`, like `build:vite`. Variables set in the shell win over both
-files. Put anything private in `.env` or `.env.local`, never in `.env.example`.
-`vercel env pull` writes `.env.local`, so it would point local runs at the Vercel
-database.
-
-## Find components
-
-Search the registry with the shadcn CLI. No `components.json` is needed.
+shadcn/ui for Elm, copied into `client/UI/` and ours to change. Read a module for its API.
 
 ```sh
-npx shadcn@latest search ricardocasares/elmcn
 npx shadcn@latest search ricardocasares/elmcn -q dialog
-```
-
-Each result is an item name such as `button` or `alert-dialog`. To see what an item
-installs and which Elm packages it needs, view it:
-
-```sh
 npx shadcn@latest view ricardocasares/elmcn/dialog
-```
-
-The installed components are the modules in `client/UI/`. Read one to learn its API before
-using it.
-
-## Install components
-
-Run the CLI from the repo root. The registry's install path is fixed to `src/UI/`, but
-the app's components live in `client/UI/`, so move the new files over afterwards:
-
-```sh
-npx shadcn@latest add ricardocasares/elmcn/card ricardocasares/elmcn/input
+npx shadcn@latest add ricardocasares/elmcn/dialog
 mv -n src/UI/*.elm client/UI/ && ls src/UI
 ```
 
-- Each item is written to `src/UI/<Name>.elm`, together with the components it uses.
-  `alert-dialog` becomes `UI.AlertDialog`.
-- `mv -n` doesn't replace a component `client/UI/` already has, which may have local
-  changes. Whatever `ls src/UI` still lists is such a component: compare it with the
-  copy in `client/UI/`, keep what's needed, then delete `src/`.
-- `--diff` compares with `src/UI/`, so it doesn't see the components in `client/UI/`.
-  Compare by hand instead, as above.
-- Read the notes the CLI prints after the install. Some items need an Elm package, for
-  example `elm install elm/json` (run at the root, for the browser app), or a script that
-  `client/main.ts` must import.
-- Do not write a component by hand if the registry has it.
-
-## Use components
-
-Components are builders: `X.new`, then content setters, then variant and size setters,
-then `toHtml`. Break the line after `X.new` and put each `|>` on its own line.
-
-```elm
-import UI.Button as Button
-
-Button.new
-    |> Button.text "Save"
-    |> Button.outline
-    |> Button.small
-    |> Button.toHtml [ onClick Save ]
-```
-
-Required content is enforced by the type, so an incomplete builder does not compile.
-
-## Code comments
-
-No comments in code: not in Elm (including `{-| -}` doc comments), TypeScript, CSS, SQL,
-shell, or config files such as `.env`, `bunfig.toml` and `.prettierignore`. Make the code
-say it through names and types; anything it still can't say, such as a constraint, a
-workaround or a reason, goes here in AGENTS.md. When you touch a file that has comments,
-remove them.
-
-The only exceptions are directives the tools need, which aren't explanations:
-`// @ts-expect-error`, `/// <reference types="..." />`, and the like. Leave files that
-tools generate or sign alone: `.gmrc` (graphile-migrate's template), `*.elm.d.ts`, and
-committed migrations, whose hash covers their comments.
-
-## Project
-
-### Two Elm projects
-
-- `elm.json` (root) compiles the browser app: `client` and `shared`.
-  `api/elm.json` compiles the server: `api/src` and `shared`.
-  vite-plugin-elm compiles each program with the closest `elm.json` above it.
-- Keep them apart: the browser's `elm.json` must not list `api/` folders, so code
-  that holds the database password cannot end up in the browser bundle.
-- Install an Elm package for the server with `elm install <pkg>` inside `api/`. A
-  package a `shared/` module imports must be in both `elm.json` files.
-- Each project has its own `InteropDefinitions` and `InteropPorts`, typed with
-  elm-ts-interop. After changing either `InteropDefinitions.elm`, run `bun run types`.
-- `app.ts` and `client/main.ts` receive each `FromElm` value as `msg` and handle it in a
-  `switch (msg.tag)` that ends in `default: return msg satisfies never;`, so a new
-  `FromElm` variant doesn't type check until the TypeScript side handles it. Keep that `default` in every such `switch`.
-
-### Shared Elm code
-
-- `Api.Route` lists every server route, all under `/api`. The template has one,
-  `GetHealth` (`GET /api/health`): `Api.path` starts with
-  `"api"`, and `Api.parse` expects it. Every entry point (`api/index.ts` and the dev
-  plugin) passes the request to Elm as it came, so the routes are the real URLs.
-  The server handles `Api.Route` in a `case` without a wildcard, so a new route won't
-  compile until it is handled. Keep `Api.parse` in step with `Api.method` and
-  `Api.path`.
-- `Api.Endpoint body response` ties a JSON route to its request and response types. The
-  browser app calls the server only through `ApiClient.request` with an endpoint.
-- Every route can fail with `{ "error": "..." }`, so the error body is part of `Api` too:
-  the server writes it with `Api.encodeError` and the browser reads it with
-  `Api.errorDecoder`.
-
-### Browser app
-
-- `client/Main.elm` is the app, started by `client/main.ts`.
-- `client/main.css` is the one stylesheet: Tailwind and the theme. `index.html` links it,
-  so do not import CSS from TypeScript.
-- The page is the Server card, which lists each check from `Api.checks` by name with a
-  green (`pass`), yellow (`warn`) or red (`fail`) dot, and below it the theme toggle:
-  `UI.Tabs` with tabs that have no panel, one per `Theme`. The choice is saved in
-  `localStorage` through the `WriteToLocalStorage` port, and the flags read it back on
-  the next load. A new check in `Api.Health` shows up on the card once `Api.checks` names
-  it.
-- Icons come from the `phosphor-icons/phosphor-elm` package, at the `Regular` weight:
-  `Phosphor.sun Regular |> Phosphor.toHtml []`. elmcn has no icon set, so use Phosphor
-  rather than writing SVG by hand. Elm's dead code elimination keeps only the icons the
-  app uses. An icon-only control needs its label as `sr-only` text.
-
-### Server
-
-- `api/src/Main.elm` is a `Platform.worker`. `api/_ts/app.ts` starts it and
-  exports `handle(request)`: each request carries its Promise's `resolve` function into
-  Elm, and Elm sends it back with the response. The Vercel Function and the dev plugin
-  serve `handle`; there is no standalone server.
-- The `app:api` plugin in `api/_ts/dev.ts` serves `/api/*` with `handle` in both of
-  Vite's servers. In `bun dev` it runs the source: when an `.elm` or `.ts` file in
-  `api/` or `shared/` changes, it loads the server again and the Elm program starts
-  from `init`. In `bun run preview` it runs the build, `dist/server/app.js`, so run
-  `bun run build` first. Vite restarts by itself when `vite.config.ts` or `dev.ts`
-  changes.
-- `bun run build` builds the server (Vite's `ssr` environment) into
-  `dist/server/app.js`, then the browser app (`client` environment) into
-  `dist/client/`, one after the other: Elm processes that fill an empty `~/.elm` at once
-  corrupt it.
-- The server logs with `log level message` in `api/src/Main.elm`, where the level is
-  `Interop.Info`, `Interop.Warn` or `Interop.Error`. `app.ts` passes the message as it is
-  to `console.info`, `console.warn` or `console.error`, which Vercel shows as the log's
-  level: write the whole message in Elm, as `app.ts` adds nothing. At startup the server
-  logs at `info` where it sends queries, at `warn` when it has no database, and at
-  `error` when its flags don't decode. A slow health check logs at `warn`; a failed one,
-  and every database error, at `error`.
-- The server reaches Postgres through the Neon driver; the queries are in
-  `api/src/Db.elm`. The server reads `DATABASE_URL`, and `NEON_ENDPOINT` to send queries
-  to a local proxy instead of Neon. Routes that query through `withDb` answer 503 without
-  `DATABASE_URL`, and 500 on a database error, logged as `Database error: ...`.
-  JSON responses carry `cache-control: no-store`.
-- `GET /api/health` follows the IETF health check draft
-  (`application/health+json`): `status` is `pass`, `warn` or `fail`, and `checks.database` has
-  the database's `status`, `latencyMs` and, when it fails, an `output`. It runs
-  `SELECT 1`, which needs no tables, with a 5 second `Neon.withTimeout`, so a hung
-  database fails the check instead of holding the request until the function times out.
-  It answers `warn` when the query took longer than `slowAfter` (1 second), which is
-  still a 200, as the draft says: the database works, slowly. It answers 200 on pass and
-  warn and 503 on fail, which is what load balancers and uptime monitors look for. The
-  browser app shows the status as a green, yellow or red dot. `output` is a short public
-  reason (timed out, unreachable, the query failed); the full error is logged as `Health check failed: ...`, since Postgres
-  messages can name roles and tables. The latency is measured with `Time.now` around the
-  query, so it includes the HTTP hop to Neon, and a first request after scale to zero
-  includes the compute starting.
-- The health report also carries `releaseId` and `region`, so a report says which
-  deploy and which region answered. `app.ts` reads them at startup: `releaseId` from
-  `VERCEL_GIT_COMMIT_SHA`, or `VERCEL_DEPLOYMENT_ID` for a CLI deploy without git
-  metadata, and `region` from `VERCEL_REGION`. Off Vercel (`VERCEL` unset) both are
-  `local`; on Vercel a variable that is missing leaves its field out. `releaseId` is the draft's own field; `region` is ours. On GitHub deploys
-  (`VERCEL_GIT_PROVIDER` is `github`) `app.ts` also builds the commit's URL from
-  `VERCEL_GIT_REPO_OWNER`, `VERCEL_GIT_REPO_SLUG` and `VERCEL_GIT_COMMIT_SHA`, and the
-  report carries it as the draft's `links.release`. Vercel fills these for CLI deploys
-  from a git checkout too. The card shows them in its footer, with a commit shortened to
-  7 characters and linked to GitHub.
-- The card keeps its size while it loads, so nothing below it moves: the first check
-  renders a row per `Api.checkNames` with a grey pulsing dot and `UI.Skeleton`s for the
-  latency and the footer, a refresh keeps the last report on screen with pulsing dots,
-  and a footer with nothing to show keeps its height with invisible text. Name checks only in
-  `Api.namedChecks`, which both the rows and the placeholders read.
-- `ApiClient` reads an error status's body with `Api.errorDecoder` first, then with the
-  endpoint's own response decoder, so the browser app gets the health report on a 503
-  too.
-- Local database: see Database above. The same `DATABASE_URL` works for the proxy and
-  for a direct connection, as a Neon connection string does, so the server and Graphile
-  Migrate share it.
-
-### Neon driver
-
-- `Neon` queries a Neon database over HTTP, one request per query or per transaction,
-  like `neon()` in `@neondatabase/serverless`. `Neon.run` and `Neon.commit` return
-  `Task`s. Rows arrive as JSON objects keyed by column name, with booleans, numbers and
-  `jsonb` as JSON, so `Neon.select` takes a `Json.Decode.Decoder`. Decode rows with the
-  same decoders the shared `Api` codecs use, so the database and the API agree.
-- Neon turns `boolean` into a JSON boolean; `smallint`, `integer`, `real` and
-  `double precision` into numbers; `json`, `jsonb` and arrays into JSON; and `NULL` into
-  `null` (`Decode.nullable`). Everything else is a string as Postgres prints it,
-  including `bigint`, `numeric` and `timestamptz`, so they stay exact. If two columns
-  share a name, the row keeps the last one, so rename them with `AS`.
-- Parameters are sent as Postgres text, as in the official driver, and Postgres converts
-  them to the column types. `Neon.json` is for `json` and `jsonb` columns.
-- `Neon.connect` derives the HTTP endpoint from the connection string's host, as the
-  official driver does: `ep-cool-lake-123456.eu-central-1.aws.neon.tech` sends queries to
-  `api.eu-central-1.aws.neon.tech`. `Neon.withEndpoint` overrides it, as `NEON_ENDPOINT`
-  does for the local proxy.
-- It uses `elm/http`, so `app.ts` imports `api/_ts/xhr.ts` before starting Elm: Bun,
-  Node and Vercel Functions have no `XMLHttpRequest`.
-- The connection string holds the database password, so only use it on the server.
-- Never build SQL with `++` from a value that came from a request: pass it as a `$n`
-  parameter (`Neon.text`, `Neon.int`, ...), which Postgres treats as data. The driver
-  takes SQL as a plain `String`, so nothing else stops an injection. Only constants in
-  the code, like a list of column names, may be joined into the SQL text. Identifiers
-  (table and column names) can't be parameters: if one must depend on a request, pick it
-  from a fixed list.
+- The registry installs into `src/UI/`. `mv -n` keeps existing (maybe edited) components;
+  whatever `ls` still lists, merge by hand, then delete `src/`. `--diff` can't see
+  `client/UI/`.
+- Follow the CLI's notes: some items need an Elm package (`elm install` at the root) or
+  a script import in `client/main.ts`. Strip their comments.
+- Builders: `X.new`, content, variants and sizes, `toHtml`; one `|>` per line.
 
   ```elm
-  -- Vulnerable: the name becomes part of the SQL
-  Neon.execute ("UPDATE users SET name = '" ++ name ++ "'") []
-
-  -- Safe: the name is a value
-  Neon.execute "UPDATE users SET name = $1" [ Neon.text name ]
+  Button.new
+      |> Button.text "Save"
+      |> Button.outline
+      |> Button.toHtml [ onClick Save ]
   ```
 
-### Vercel
+## Server
 
-The repo deploys as one Vercel project, configured by `vercel.json`, on one Neon project
-with two branches, `main` and `preview`. `.vercel` and `.neon` link them locally and are
-not committed. Set `regions` in `vercel.json` to the Vercel region closest to the Neon
-project's region.
+- `api/src/Main.elm` is a `Platform.worker`. `app.ts` exports `handle(request)`: each
+  request carries its Promise's `resolve` into Elm, which sends it back with the
+  response. The Vercel Function and the `app:api` plugin (`dev.ts`) serve `handle`.
+- `dev.ts` reloads the server on any `.elm`/`.ts` change in `api/` or `shared/`
+  (restarting from `init`); `preview` runs `dist/server/app.js`.
+- Routes are real URLs under `/api`: entry points pass requests through unchanged.
+- Errors are `{ "error": "..." }` (`Api.encodeError`). `withDb` answers 503 without
+  `DATABASE_URL` and 500 on a database error. JSON is `cache-control: no-store`.
+- Logging: `log Interop.Info|Warn|Error message`; `app.ts` calls `console[level]` with the
+  message unchanged, which Vercel reads as the level. Database errors log at `error`.
+- `GET /api/health` (IETF health check draft, `application/health+json`) runs `SELECT 1`
+  with a 5 s `Neon.withTimeout`. It answers `pass` with 200, `warn` with 200 when slower
+  than `slowAfter` (1 s), and `fail` with 503. `output` is a short public reason; the full
+  error is only logged, since Postgres messages can name roles and tables. Latency
+  includes the hop to Neon and any cold start.
+- The report's `releaseId` (`VERCEL_GIT_COMMIT_SHA`, else `VERCEL_DEPLOYMENT_ID`),
+  `region` (`VERCEL_REGION`, our own field) and `links.release` (GitHub commit URL from
+  `VERCEL_GIT_*`) come from `app.ts`. Off Vercel they are `local`.
 
-- `bun install`, then the migrations, then `bun run build`. The browser app is served
-  from `dist/client`; `dist/server` stays private, bundled into the function.
-- `api/index.ts` is the only function. It imports `handle` from `dist/server/app`, which
-  the build produces, and serves every `/api/*` path through a rewrite. It relies on
-  Vercel keeping the original URL in `request.url` after the rewrite, for Elm to route on.
-- Functions run on Vercel's Bun runtime (`"bunVersion": "1.x"`, in beta). Keep
-  `api/_ts/app.ts` to Web APIs (`Request`, `Response`, `crypto`) anyway, so it runs on
-  any runtime.
-- Environment variables, stored as secrets on Vercel:
+## Neon driver
 
-  | Vercel environment | Neon branch | `DATABASE_URL` (the app) | `DATABASE_URL_UNPOOLED` (migrations) |
-  | ------------------ | ----------- | ------------------------ | ------------------------------------ |
-  | Production         | `main`      | pooled (`-pooler`)       | direct                               |
-  | Preview            | `preview`   | pooled (`-pooler`)       | direct                               |
+- `Neon.elm` is `neon()` from `@neondatabase/serverless` in Elm: one HTTPS request per
+  query or transaction; `Neon.run` and `Neon.commit` return `Task`s. It uses `elm/http`,
+  so `app.ts` imports `xhr.ts` first: Bun, Node and Vercel have no `XMLHttpRequest`.
+- Rows are JSON objects by column name. `boolean`, `smallint`, `integer`, `real`,
+  `double precision`, `json`, `jsonb` and arrays arrive as JSON; `NULL` as `null`;
+  everything else (`bigint`, `numeric`, `timestamptz`...) as Postgres's text. Duplicate
+  column names keep the last: use `AS`. Decode with the same decoders as the `Api` codecs.
+- Parameters travel as text and Postgres converts them; `Neon.json` for `json`/`jsonb`.
+- The endpoint comes from the host (`ep-x.eu-central-1.aws.neon.tech` →
+  `api.eu-central-1.aws.neon.tech`); `Neon.withEndpoint` overrides it (`NEON_ENDPOINT`).
+- The connection string holds the password: server only.
 
-  Without `DATABASE_URL`, database routes answer 503. `.env` is not uploaded
-  (`.vercelignore`), and `NEON_ENDPOINT` is unset on Vercel, so the driver talks to Neon.
+## Vercel
 
-- The build command migrates first, over the direct connection, as migrations need:
-  `DATABASE_URL="$DATABASE_URL_UNPOOLED" bun db migrate`. A missing
-  `DATABASE_URL_UNPOOLED` fails the build before anything deploys. Preview builds
-  migrate the `preview` branch, never `main`, so a migration reaches production only
-  when it is deployed there. Reset the preview branch to production with
-  `bunx neon@latest branches reset preview --parent`.
-- The variables are secrets, so `vercel pull` brings back empty values and a local
-  `vercel build` fails at the migration step. To try the build command locally, set
-  `DATABASE_URL_UNPOOLED` yourself, to a branch you can afford to migrate.
-- The `neon` CLI runs through `bunx neon@latest` (it isn't installed globally). Don't
-  run `neon link` or `neon checkout` without `--no-env-pull`: they would write the Neon
-  `DATABASE_URL` into `.env`, which is for the local database.
+One Vercel project (`vercel.json`) on one Neon project with branches `main` and `preview`.
+`.vercel` and `.neon` are local links, not committed. Keep `regions` next to Neon's region.
+
+| Vercel     | Neon branch | `DATABASE_URL` (app) | `DATABASE_URL_UNPOOLED` (migrations) |
+| ---------- | ----------- | -------------------- | ------------------------------------ |
+| Production | `main`      | pooled (`-pooler`)   | direct                               |
+| Preview    | `preview`   | pooled (`-pooler`)   | direct                               |
+
+- Build: `DATABASE_URL="$DATABASE_URL_UNPOOLED" bun db migrate && bun run build`. Each
+  environment migrates its own branch; a missing variable fails the build. Reset preview
+  with `bunx neon@latest branches reset preview --parent`.
+- `build` runs the Elm steps one at a time: on a fresh machine, two processes filling
+  `~/.elm` at once corrupt it ("PROBLEM BUILDING DEPENDENCIES"), and elm-ts-interop still
+  exits 0. `types:api` must `cd api`, as elm-ts-interop uses the nearest `elm.json`.
+- `dist/client` is served; `dist/server` is bundled into `api/index.ts`, which every
+  `/api/*` rewrites to (Vercel keeps the original URL in `request.url`). Bun runtime
+  (`"bunVersion": "1.x"`, beta).
+- Variables are secrets: `vercel pull` gets empty values, so a local `vercel build` fails
+  at migrating unless you set `DATABASE_URL_UNPOOLED` to a branch you can migrate.
+- `neon` CLI: `bunx neon@latest`. Use `--no-env-pull` with `neon link` or
+  `neon checkout`, or they write Neon's `DATABASE_URL` into `.env`.
