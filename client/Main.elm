@@ -153,7 +153,7 @@ viewHealth health =
         |> Card.content []
             [ case health of
                 Checking Nothing ->
-                    viewRows (List.map (\name -> row pendingDot name Nothing Nothing) Api.checkNames)
+                    viewRows (List.map (\name -> row pendingDot name latencySkeleton Nothing) Api.checkNames)
 
                 Checking (Just report) ->
                     viewRows (List.map (viewCheck (always pendingDot)) (Api.checks report))
@@ -162,7 +162,7 @@ viewHealth health =
                     viewRows (List.map (viewCheck statusDot) (Api.checks report))
 
                 Unreachable message ->
-                    viewRows [ row "bg-red-500" "Server" Nothing (Just message) ]
+                    viewRows [ row "bg-red-500" "Server" (text "") (Just message) ]
             ]
         |> Card.footer [ class "text-xs text-muted-foreground" ] (viewRelease health)
         |> Card.toHtml [ class "w-full max-w-sm" ]
@@ -252,7 +252,17 @@ viewRows rows =
 
 viewCheck : (Api.Status -> String) -> ( String, Api.Check ) -> Html Msg
 viewCheck toDot ( name, check ) =
-    row (toDot check.status) name check.latencyMs check.output
+    row (toDot check.status) name (latency check.latencyMs) check.output
+
+
+latency : Maybe Int -> Html Msg
+latency ms =
+    text (Maybe.withDefault "" (Maybe.map (\n -> String.fromInt n ++ " ms") ms))
+
+
+latencySkeleton : Html Msg
+latencySkeleton =
+    Skeleton.view [ class "h-4 w-12", attribute "aria-hidden" "true" ]
 
 
 statusDot : Api.Status -> String
@@ -268,13 +278,12 @@ statusDot status =
             "bg-red-500"
 
 
-row : String -> String -> Maybe Int -> Maybe String -> Html Msg
-row dot name latencyMs output =
+row : String -> String -> Html Msg -> Maybe String -> Html Msg
+row dot name measured output =
     li [ class "flex flex-wrap items-center gap-x-3 gap-y-1" ]
         [ span [ class ("size-3 shrink-0 rounded-full " ++ dot) ] []
         , span [ class "font-medium" ] [ text name ]
-        , span [ class "ml-auto text-sm text-muted-foreground tabular-nums" ]
-            [ text (Maybe.withDefault "" (Maybe.map (\ms -> String.fromInt ms ++ " ms") latencyMs)) ]
+        , div [ class "ml-auto text-sm text-muted-foreground tabular-nums" ] [ measured ]
         , case output of
             Just message ->
                 p [ class "w-full pl-6 text-sm text-muted-foreground" ] [ text message ]
