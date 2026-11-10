@@ -3,7 +3,7 @@ module Api exposing
     , Endpoint, health
     , route, encodeBody, decodeBody, encodeResponse, responseDecoder
     , encodeError, errorDecoder
-    , Health, Check, Status(..), healthOf
+    , Health, Check, Status(..), healthOf, checks
     )
 
 import Json.Decode as Decode exposing (Decoder)
@@ -197,6 +197,11 @@ type alias Health =
 healthOf : Check -> Health
 healthOf database =
     { status = database.status, database = database }
+
+
+checks : Health -> List ( String, Check )
+checks health_ =
+    [ ( "Database", health_.database ) ]
 
 
 healthCodec : Codec Health

@@ -226,6 +226,16 @@ committed migrations, whose hash covers their comments.
 - `client/Main.elm` is the app, started by `client/main.ts`.
 - `client/main.css` is the one stylesheet: Tailwind and the theme. `index.html` links it,
   so do not import CSS from TypeScript.
+- The page is the Server card, which lists each check from `Api.checks` by name with a
+  green (`pass`), yellow (`warn`) or red (`fail`) dot, and below it the theme toggle:
+  `UI.Tabs` with tabs that have no panel, one per `Theme`. The choice is saved in
+  `localStorage` through the `WriteToLocalStorage` port, and the flags read it back on
+  the next load. A new check in `Api.Health` shows up on the card once `Api.checks` names
+  it.
+- Icons come from the `phosphor-icons/phosphor-elm` package, at the `Regular` weight:
+  `Phosphor.sun Regular |> Phosphor.toHtml []`. elmcn has no icon set, so use Phosphor
+  rather than writing SVG by hand. Elm's dead code elimination keeps only the icons the
+  app uses. An icon-only control needs its label as `sr-only` text.
 
 ### Server
 

@@ -3,14 +3,16 @@ module Main exposing (Model, Msg, main)
 import Api
 import ApiClient
 import Browser
-import Html exposing (Html, div, p, span, text)
+import Html exposing (Html, div, li, p, span, text, ul)
 import Html.Attributes exposing (attribute, class)
 import Html.Events exposing (onClick)
 import InteropDefinitions as Interop exposing (Theme)
 import InteropPorts
 import Json.Decode as Decode
+import Phosphor exposing (IconWeight(..))
 import UI.Button as Button
 import UI.Card as Card
+import UI.Tabs as Tabs
 
 
 main : Program Decode.Value Model Msg
@@ -81,6 +83,7 @@ type Msg
     = GotInterop (Result Decode.Error Interop.ToElm)
     | GotHealth (Result String Api.Health)
     | CheckHealth
+    | ThemeSelected Theme
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -101,6 +104,16 @@ update msg model =
         CheckHealth ->
             ( { model | health = Checking }, checkHealth )
 
+        ThemeSelected theme ->
+            ( { model | theme = theme }
+            , InteropPorts.fromElm
+                (Interop.WriteToLocalStorage
+                    { key = "theme"
+                    , value = Interop.themeToString theme
+                    }
+                )
+            )
+
 
 
 -- VIEW
@@ -117,17 +130,15 @@ view model =
                 ""
             )
         ]
-        [ div [ class "flex min-h-screen items-center justify-center bg-background p-6 text-foreground" ]
-            [ viewHealth model.health ]
+        [ div [ class "flex min-h-screen flex-col items-center justify-center gap-4 bg-background p-6 text-foreground" ]
+            [ viewHealth model.health
+            , viewThemeTabs model.theme
+            ]
         ]
 
 
 viewHealth : Health -> Html Msg
 viewHealth health =
-    let
-        { dot, label, detail } =
-            describe health
-    in
     Card.new
         |> Card.title [ text "Server" ]
         |> Card.description [ text "GET /api/health" ]
@@ -139,52 +150,76 @@ viewHealth health =
                 |> Button.toHtml [ onClick CheckHealth ]
             )
         |> Card.content []
-            [ div [ class "flex items-center gap-3", attribute "role" "status" ]
-                [ span [ class ("size-3 shrink-0 rounded-full " ++ dot) ] []
-                , span [ class "font-medium" ] [ text label ]
-                , span [ class "ml-auto text-sm text-muted-foreground tabular-nums" ] [ text detail.latency ]
-                ]
-            , case detail.output of
-                Just output ->
-                    p [ class "mt-2 text-sm text-muted-foreground" ] [ text output ]
+            [ case health of
+                Checking ->
+                    viewRows [ row "animate-pulse bg-muted-foreground" "Checking…" Nothing Nothing ]
 
-                Nothing ->
-                    text ""
+                Unreachable message ->
+                    viewRows [ row "bg-red-500" "Server" Nothing (Just message) ]
+
+                Checked report ->
+                    viewRows (List.map viewCheck (Api.checks report))
             ]
         |> Card.toHtml [ class "w-full max-w-sm" ]
 
 
-describe : Health -> { dot : String, label : String, detail : { latency : String, output : Maybe String } }
-describe health =
-    case health of
-        Checking ->
-            { dot = "animate-pulse bg-muted-foreground"
-            , label = "Checking…"
-            , detail = { latency = "", output = Nothing }
-            }
+viewRows : List (Html Msg) -> Html Msg
+viewRows rows =
+    ul [ class "flex flex-col gap-3", attribute "role" "status" ] rows
 
-        Unreachable message ->
-            { dot = "bg-red-500"
-            , label = "Unreachable"
-            , detail = { latency = "", output = Just message }
-            }
 
-        Checked report ->
-            let
-                detail =
-                    { latency =
-                        report.database.latencyMs
-                            |> Maybe.map (\ms -> String.fromInt ms ++ " ms")
-                            |> Maybe.withDefault ""
-                    , output = report.database.output
-                    }
-            in
-            case report.status of
-                Api.Pass ->
-                    { dot = "bg-green-500", label = "Healthy", detail = detail }
+viewCheck : ( String, Api.Check ) -> Html Msg
+viewCheck ( name, check ) =
+    row (statusDot check.status) name check.latencyMs check.output
 
-                Api.Warn ->
-                    { dot = "bg-yellow-500", label = "Degraded", detail = detail }
 
-                Api.Fail ->
-                    { dot = "bg-red-500", label = "Unhealthy", detail = detail }
+statusDot : Api.Status -> String
+statusDot status =
+    case status of
+        Api.Pass ->
+            "bg-green-500"
+
+        Api.Warn ->
+            "bg-yellow-500"
+
+        Api.Fail ->
+            "bg-red-500"
+
+
+row : String -> String -> Maybe Int -> Maybe String -> Html Msg
+row dot name latencyMs output =
+    li [ class "flex flex-wrap items-center gap-x-3 gap-y-1" ]
+        [ span [ class ("size-3 shrink-0 rounded-full " ++ dot) ] []
+        , span [ class "font-medium" ] [ text name ]
+        , span [ class "ml-auto text-sm text-muted-foreground tabular-nums" ]
+            [ text (Maybe.withDefault "" (Maybe.map (\ms -> String.fromInt ms ++ " ms") latencyMs)) ]
+        , case output of
+            Just message ->
+                p [ class "w-full pl-6 text-sm text-muted-foreground" ] [ text message ]
+
+            Nothing ->
+                text ""
+        ]
+
+
+viewThemeTabs : Theme -> Html Msg
+viewThemeTabs theme =
+    Tabs.new
+        |> Tabs.id "theme"
+        |> Tabs.onSelect ThemeSelected
+        |> Tabs.value theme
+        |> Tabs.tabs
+            [ themeTab Interop.Light Phosphor.sun "Light"
+            , themeTab Interop.Dark Phosphor.moon "Dark"
+            , themeTab Interop.System Phosphor.monitor "System"
+            ]
+        |> Tabs.toHtml [ attribute "aria-label" "Theme" ]
+
+
+themeTab : Theme -> Phosphor.Icon -> String -> Tabs.Tab Theme Msg
+themeTab theme icon label =
+    Tabs.tab theme
+        [ icon Regular |> Phosphor.toHtml [ attribute "aria-hidden" "true" ]
+        , span [ class "sr-only" ] [ text label ]
+        ]
+        []
