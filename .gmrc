@@ -95,7 +95,7 @@
     {
       "_": "command",
       "shadow": true,
-      "command": "PATH=\"$PATH:/Applications/Postgres.app/Contents/Versions/latest/bin\" pg_dump --schema-only --no-owner --no-privileges --exclude-schema=graphile_migrate --restrict-key=schema --file=migrations/schema.sql \"$GM_DBURL\"",
+      "command": "pg_dump --schema-only --no-owner --no-privileges --exclude-schema=graphile_migrate --restrict-key=schema --file=migrations/schema.sql \"$GM_DBURL\"",
     },
   ],
 
