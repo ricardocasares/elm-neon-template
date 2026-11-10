@@ -21,9 +21,10 @@ It ships with one route, `GET /api/health`, for uptime monitors and load balance
 { "status": "pass", "checks": { "database": { "status": "pass", "latencyMs": 12 } } }
 ```
 
-with 200, or `"status": "fail"`, an `output` saying why, and 503 when the database is not
-configured, times out, can't be reached or rejects the query. The browser app calls it and
-shows the result.
+with 200. It answers `"warn"`, still with 200, when the database took over a second, and
+`"fail"` with 503 when the database is not configured, times out, can't be reached or rejects
+the query, with an `output` saying why. The browser app shows it as a card with a green,
+yellow or red dot.
 
 ## Use this template
 

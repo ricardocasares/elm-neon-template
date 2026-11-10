@@ -243,12 +243,14 @@ committed migrations, whose hash covers their comments.
   `DATABASE_URL`, and 500 on a database error, logged as `[elm] Database error: ...`.
   JSON responses carry `cache-control: no-store`.
 - `GET /api/health` follows the IETF health check draft
-  (`application/health+json`): `status` is `pass` or `fail`, and `checks.database` has
+  (`application/health+json`): `status` is `pass`, `warn` or `fail`, and `checks.database` has
   the database's `status`, `latencyMs` and, when it fails, an `output`. It runs
   `SELECT 1`, which needs no tables, with a 5 second `Neon.withTimeout`, so a hung
   database fails the check instead of holding the request until the function times out.
-  It answers 200 on pass and 503 on fail, which is what load balancers and uptime
-  monitors look for. `output` is a short public reason (timed out, unreachable, the query
+  It answers `warn` when the query took longer than `slowAfter` (1 second), which is
+  still a 200, as the draft says: the database works, slowly. It answers 200 on pass and
+  warn and 503 on fail, which is what load balancers and uptime monitors look for. The
+  browser app shows the status as a green, yellow or red dot. `output` is a short public reason (timed out, unreachable, the query
   failed); the full error is logged as `[elm] Health check failed: ...`, since Postgres
   messages can name roles and tables. The latency is measured with `Time.now` around the
   query, so it includes the HTTP hop to Neon, and a first request after scale to zero

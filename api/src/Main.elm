@@ -87,7 +87,17 @@ update msg model =
             ( model
             , InteropPorts.fromElm
                 (Interop.Respond resolver
-                    (health { status = Api.Pass, latencyMs = Just latency, output = Nothing })
+                    (health
+                        (if latency > slowAfter then
+                            { status = Api.Warn
+                            , latencyMs = Just latency
+                            , output = Just ("Slower than " ++ String.fromInt slowAfter ++ " ms.")
+                            }
+
+                         else
+                            { status = Api.Pass, latencyMs = Just latency, output = Nothing }
+                        )
+                    )
                 )
             )
 
@@ -156,6 +166,11 @@ handle model _ r =
 healthTimeout : Float
 healthTimeout =
     5000
+
+
+slowAfter : Int
+slowAfter =
+    1000
 
 
 failure : Neon.Error -> String
@@ -237,6 +252,9 @@ health check =
     { status =
         case report.status of
             Api.Pass ->
+                200
+
+            Api.Warn ->
                 200
 
             Api.Fail ->

@@ -165,6 +165,7 @@ responseDecoder (Endpoint e) =
 
 type Status
     = Pass
+    | Warn
     | Fail
 
 
@@ -226,6 +227,9 @@ encodeStatus status =
         Pass ->
             Encode.string "pass"
 
+        Warn ->
+            Encode.string "warn"
+
         Fail ->
             Encode.string "fail"
 
@@ -238,6 +242,9 @@ statusDecoder =
                 case status of
                     "pass" ->
                         Decode.succeed Pass
+
+                    "warn" ->
+                        Decode.succeed Warn
 
                     "fail" ->
                         Decode.succeed Fail

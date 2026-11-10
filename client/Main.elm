@@ -3,18 +3,14 @@ module Main exposing (Model, Msg, main)
 import Api
 import ApiClient
 import Browser
-import Html exposing (Html, code, div, h1, p, span, text)
-import Html.Attributes exposing (class)
+import Html exposing (Html, div, p, span, text)
+import Html.Attributes exposing (attribute, class)
 import Html.Events exposing (onClick)
 import InteropDefinitions as Interop exposing (Theme)
 import InteropPorts
 import Json.Decode as Decode
-import Process
-import Task
-import UI.Badge as Badge
 import UI.Button as Button
 import UI.Card as Card
-import UI.Spinner as Spinner
 
 
 main : Program Decode.Value Model Msg
@@ -34,16 +30,14 @@ main =
 type alias Model =
     { theme : Theme
     , systemDark : Bool
-    , copied : Bool
-    , error : Maybe String
     , health : Health
     }
 
 
 type Health
     = Checking
-    | Healthy Api.Health
-    | Unhealthy String
+    | Checked Api.Health
+    | Unreachable String
 
 
 init : Decode.Value -> ( Model, Cmd Msg )
@@ -55,8 +49,6 @@ init flags =
     in
     ( { theme = Maybe.withDefault Interop.System theme
       , systemDark = systemDark
-      , copied = False
-      , error = Nothing
       , health = Checking
       }
     , checkHealth
@@ -86,10 +78,7 @@ isDark model =
 
 
 type Msg
-    = ThemeSelected Theme
-    | CopyClicked
-    | CopiedReset
-    | GotInterop (Result Decode.Error Interop.ToElm)
+    = GotInterop (Result Decode.Error Interop.ToElm)
     | GotHealth (Result String Api.Health)
     | CheckHealth
 
@@ -97,44 +86,17 @@ type Msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        ThemeSelected theme ->
-            ( { model | theme = theme }
-            , InteropPorts.fromElm
-                (Interop.WriteToLocalStorage
-                    { key = "theme"
-                    , value = Interop.themeToString theme
-                    }
-                )
-            )
-
-        CopyClicked ->
-            ( { model | copied = True }
-            , Cmd.batch
-                [ InteropPorts.fromElm (Interop.CopyToClipboard "bunx --bun shadcn@latest add ricardocasares/elmcn/button")
-                , Task.perform (\_ -> CopiedReset) (Process.sleep 1500)
-                ]
-            )
-
-        CopiedReset ->
-            ( { model | copied = False }, Cmd.none )
-
         GotInterop (Ok (Interop.SystemThemeChanged systemDark)) ->
             ( { model | systemDark = systemDark }, Cmd.none )
 
-        GotInterop (Ok (Interop.LocalStorageError error)) ->
-            ( { model | error = Just (error.key ++ ": " ++ error.message) }, Cmd.none )
-
-        GotInterop (Ok (Interop.ClipboardError message)) ->
-            ( { model | copied = False, error = Just message }, Cmd.none )
-
-        GotInterop (Err _) ->
+        GotInterop _ ->
             ( model, Cmd.none )
 
         GotHealth (Ok health) ->
-            ( { model | health = Healthy health }, Cmd.none )
+            ( { model | health = Checked health }, Cmd.none )
 
         GotHealth (Err message) ->
-            ( { model | health = Unhealthy message }, Cmd.none )
+            ( { model | health = Unreachable message }, Cmd.none )
 
         CheckHealth ->
             ( { model | health = Checking }, checkHealth )
@@ -155,102 +117,74 @@ view model =
                 ""
             )
         ]
-        [ div [ class "flex min-h-screen flex-col items-center justify-center gap-6 bg-background p-6 text-foreground" ]
-            [ h1 [ class "text-2xl font-semibold" ] [ text "elm-neon-template" ]
-            , div [ class "flex gap-2" ]
-                [ themeButton model Interop.Light "Light"
-                , themeButton model Interop.Dark "Dark"
-                , themeButton model Interop.System "System"
-                ]
-            , p [ class "text-sm text-muted-foreground" ]
-                [ text "Your choice is saved in localStorage." ]
-            , Button.new
-                |> Button.text
-                    (if model.copied then
-                        "Copied"
-
-                     else
-                        "Copy install command"
-                    )
-                |> Button.secondary
-                |> Button.toHtml [ onClick CopyClicked ]
-            , viewHealth model.health
-            , case model.error of
-                Just message ->
-                    code [ class "text-sm text-destructive" ] [ text message ]
-
-                Nothing ->
-                    text ""
-            ]
+        [ div [ class "flex min-h-screen items-center justify-center bg-background p-6 text-foreground" ]
+            [ viewHealth model.health ]
         ]
-
-
-themeButton : Model -> Theme -> String -> Html Msg
-themeButton model theme label =
-    Button.new
-        |> Button.text label
-        |> (if model.theme == theme then
-                identity
-
-            else
-                Button.outline
-           )
-        |> Button.toHtml [ onClick (ThemeSelected theme) ]
 
 
 viewHealth : Health -> Html Msg
 viewHealth health =
+    let
+        { dot, label, detail } =
+            describe health
+    in
     Card.new
-        |> Card.title [ text "Health" ]
-        |> Card.description [ text "Served by the Elm server at /api/health." ]
+        |> Card.title [ text "Server" ]
+        |> Card.description [ text "GET /api/health" ]
         |> Card.action
             (Button.new
-                |> Button.text "Check again"
+                |> Button.text "Refresh"
                 |> Button.outline
                 |> Button.small
                 |> Button.toHtml [ onClick CheckHealth ]
             )
         |> Card.content []
-            [ case health of
-                Checking ->
-                    div [ class "flex justify-center py-4" ]
-                        [ Spinner.view [ class "size-6 text-muted-foreground" ] ]
+            [ div [ class "flex items-center gap-3", attribute "role" "status" ]
+                [ span [ class ("size-3 shrink-0 rounded-full " ++ dot) ] []
+                , span [ class "font-medium" ] [ text label ]
+                , span [ class "ml-auto text-sm text-muted-foreground tabular-nums" ] [ text detail.latency ]
+                ]
+            , case detail.output of
+                Just output ->
+                    p [ class "mt-2 text-sm text-muted-foreground" ] [ text output ]
 
-                Healthy report ->
-                    viewCheck "Database" report.database
-
-                Unhealthy message ->
-                    p [ class "text-sm text-destructive" ] [ text message ]
+                Nothing ->
+                    text ""
             ]
         |> Card.toHtml [ class "w-full max-w-sm" ]
 
 
-viewCheck : String -> Api.Check -> Html Msg
-viewCheck name check =
-    div [ class "flex flex-wrap items-center gap-2 text-sm" ]
-        [ span [ class "mr-auto" ] [ text name ]
-        , case check.latencyMs of
-            Just ms ->
-                span [ class "text-muted-foreground" ] [ text (String.fromInt ms ++ " ms") ]
+describe : Health -> { dot : String, label : String, detail : { latency : String, output : Maybe String } }
+describe health =
+    case health of
+        Checking ->
+            { dot = "animate-pulse bg-muted-foreground"
+            , label = "Checking…"
+            , detail = { latency = "", output = Nothing }
+            }
 
-            Nothing ->
-                text ""
-        , case check.status of
-            Api.Pass ->
-                Badge.new
-                    |> Badge.text "pass"
-                    |> Badge.secondary
-                    |> Badge.toHtml []
+        Unreachable message ->
+            { dot = "bg-red-500"
+            , label = "Unreachable"
+            , detail = { latency = "", output = Just message }
+            }
 
-            Api.Fail ->
-                Badge.new
-                    |> Badge.text "fail"
-                    |> Badge.destructive
-                    |> Badge.toHtml []
-        , case check.output of
-            Just output ->
-                p [ class "w-full text-destructive" ] [ text output ]
+        Checked report ->
+            let
+                detail =
+                    { latency =
+                        report.database.latencyMs
+                            |> Maybe.map (\ms -> String.fromInt ms ++ " ms")
+                            |> Maybe.withDefault ""
+                    , output = report.database.output
+                    }
+            in
+            case report.status of
+                Api.Pass ->
+                    { dot = "bg-green-500", label = "Healthy", detail = detail }
 
-            Nothing ->
-                text ""
-        ]
+                Api.Warn ->
+                    { dot = "bg-yellow-500", label = "Degraded", detail = detail }
+
+                Api.Fail ->
+                    { dot = "bg-red-500", label = "Unhealthy", detail = detail }
