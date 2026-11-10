@@ -100,14 +100,18 @@ bun db migrate
 
 `psql` is Postgres.app's, in `/Applications/Postgres.app/Contents/Versions/latest/bin`.
 
-`dev:proxy` runs `.scripts/neon.sh`. If a container of the proxy image already publishes
-port 4445, it uses that one, whatever its name; otherwise it starts the
+`dev:proxy` runs `.scripts/neon.sh`. `bun run` doesn't pass `.env` to a script, so the
+script reads its settings itself, as Bun would: the shell first, then `.env.local`, then
+`.env`. It takes the port from `NEON_ENDPOINT`. If a container of the proxy image already
+publishes that port, it uses that one, whatever its name; otherwise it starts the
 `neon-http-proxy` container, creating it the first time with `--restart unless-stopped`.
-The proxy reaches Postgres.app at `host.docker.internal`, and wants a password for its
-own connection (`PGPASSWORD=trust`), which Postgres.app ignores for local ones. The script
-warns when nothing answers on `localhost:5432`: the proxy then answers every query with
-"Control plane request failed", which the server reports as `Neon answered with HTTP
-500`. Port 4445 must match `NEON_ENDPOINT` in `.env.example`.
+The proxy checks each query's password against Postgres through a connection of its own,
+which must be a superuser's (`DATABASE_URL`'s role gets "Control plane request failed"),
+so the script gives it `ROOT_DATABASE_URL`, with `localhost` changed to
+`host.docker.internal` for Docker to reach the Mac, and `PGPASSWORD=trust`, which
+Postgres.app ignores for local connections. Last, it runs `SELECT 1` with `DATABASE_URL`
+through the proxy, retrying while a new container starts, and warns, without failing, when
+that doesn't answer: Postgres.app stopped, or the role or database is missing.
 
 The proxy serves every database on Postgres.app, since each request carries its own
 connection string, so one container is enough for several projects. It keeps connections
