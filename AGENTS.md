@@ -255,6 +255,18 @@ committed migrations, whose hash covers their comments.
   `Task`s. Rows arrive as JSON objects keyed by column name, with booleans, numbers and
   `jsonb` as JSON, so `Neon.select` takes a `Json.Decode.Decoder`. Decode rows with the
   same decoders the shared `Api` codecs use, so the database and the API agree.
+- Neon turns `boolean` into a JSON boolean; `smallint`, `integer`, `real` and
+  `double precision` into numbers; `json`, `jsonb` and arrays into JSON; and `NULL` into
+  `null` (`Decode.nullable`). Everything else is a string as Postgres prints it,
+  including `bigint`, `numeric` and `timestamptz`, so they stay exact: `Db.now` casts
+  `now()` to `text` for the same reason. If two columns share a name, the row keeps the
+  last one, so rename them with `AS`.
+- Parameters are sent as Postgres text, as in the official driver, and Postgres converts
+  them to the column types. `Neon.json` is for `json` and `jsonb` columns.
+- `Neon.connect` derives the HTTP endpoint from the connection string's host, as the
+  official driver does: `ep-cool-lake-123456.eu-central-1.aws.neon.tech` sends queries to
+  `api.eu-central-1.aws.neon.tech`. `Neon.withEndpoint` overrides it, as `NEON_ENDPOINT`
+  does for the local proxy.
 - It uses `elm/http`, so `app.ts` imports `api/_ts/xhr.ts` before starting Elm: Bun,
   Node and Vercel Functions have no `XMLHttpRequest`.
 - The connection string holds the database password, so only use it on the server.
