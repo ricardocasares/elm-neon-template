@@ -68,6 +68,12 @@ database.
 - **UI**: use the elmcn registry component instead of writing one; Phosphor
   (`phosphor-icons/phosphor-elm`, `Regular`) instead of hand-written SVG; `sr-only` text
   on icon-only controls.
+- **Elm steps in `build` run one at a time**: keep `build` as
+  `bun run --sequential types:* check build:*`, never `types` (which runs both
+  generators in parallel). On an empty `~/.elm`, as on every fresh Vercel machine, two
+  Elm processes downloading packages at once corrupt the cache: "I ran into a
+  compilation error when trying to build the following package". It's a race, so it may
+  pass locally and still fail on Vercel.
 - **Vercel functions**: every `.ts` under `api/` becomes one unless its name or folder
   starts with `_`. Server TypeScript lives in `api/_ts`; `app.ts` uses Web APIs only.
 

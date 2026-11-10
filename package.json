@@ -11,7 +11,7 @@
     "dev": "bun run --parallel types dev:*",
     "dev:proxy": "sh .scripts/neon.sh",
     "dev:vite": "bun node_modules/vite/bin/vite.js",
-    "build": "bun run --sequential types check build:*",
+    "build": "bun run --sequential types:* check build:*",
     "build:vite": "vite build",
     "types": "bun run --parallel types:*",
     "types:api": "cd api && elm-ts-interop --output src/Main.elm.d.ts",
