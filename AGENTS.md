@@ -85,7 +85,7 @@ database.
   `bun node_modules/...`. Plain `vite`, `bunx` or `bun --bun <bin>` run as `node` without
   `.env`, and every database route answers 503. `bun run` doesn't pass `.env` to scripts,
   so `neon.sh` reads the files itself, in the same order.
-- `vercel env pull` writes `.env.local`, pointing local runs at the Vercel database.
+- `vercel env pull` writes `.env.local`, pointing local runs at Neon's `vercel-dev` branch.
 
 ## Local database
 
@@ -191,24 +191,32 @@ mv -n src/UI/*.elm client/UI/ && ls src/UI
 
 ## Vercel
 
-One Vercel project (`vercel.json`) on one Neon project with branches `main` and `preview`.
-`.vercel` and `.neon` are local links, not committed. Keep `regions` next to Neon's region.
+The Vercel project `elm-neon-template` deploys from GitHub: a push to `main` deploys
+production, a push to any other branch a preview. `vercel.json` configures it. The Neon
+project `elm-neon` is attached through Neon's Vercel integration (installed from the Neon
+console, not `vercel integration add neon`, which would provision a new database), which
+manages the variables. `.vercel` and `.neon` are local links, not committed. Keep
+`regions` next to Neon's region.
 
-| Vercel     | Neon branch | `DATABASE_URL` (app) | `DATABASE_URL_UNPOOLED` (migrations) |
-| ---------- | ----------- | -------------------- | ------------------------------------ |
-| Production | `main`      | pooled (`-pooler`)   | direct                               |
-| Preview    | `preview`   | pooled (`-pooler`)   | direct                               |
+| Vercel            | Neon branch                 | Variables                                  |
+| ----------------- | --------------------------- | ------------------------------------------ |
+| Production        | `main`                      | `DATABASE_URL`, `DATABASE_URL_UNPOOLED`    |
+| Preview (`<git>`) | `preview/<git>`, off `main` | same, scoped to the git branch             |
+| Development       | `vercel-dev`                | same, for `vercel env pull` (avoid, below) |
 
+- Each preview gets its own Neon branch: the integration cancels the first build, creates
+  the branch and its variables, then builds again. Pushing a commit that's already on
+  another branch triggers nothing.
 - Build: `DATABASE_URL="$DATABASE_URL_UNPOOLED" bun db migrate && bun run build`. Each
-  environment migrates its own branch; a missing variable fails the build. Reset preview
-  with `bunx neon@latest branches reset preview --parent`.
+  deployment migrates its own branch, so a preview's migrations never reach `main`; a
+  missing variable fails the build.
 - `build` runs the Elm steps one at a time: on a fresh machine, two processes filling
   `~/.elm` at once corrupt it ("PROBLEM BUILDING DEPENDENCIES"), and elm-ts-interop still
   exits 0. `types:api` must `cd api`, as elm-ts-interop uses the nearest `elm.json`.
 - `dist/client` is served; `dist/server` is bundled into `api/index.ts`, which every
   `/api/*` rewrites to (Vercel keeps the original URL in `request.url`). Bun runtime
   (`"bunVersion": "1.x"`, beta).
-- Variables are secrets: `vercel pull` gets empty values, so a local `vercel build` fails
-  at migrating unless you set `DATABASE_URL_UNPOOLED` to a branch you can migrate.
+- Don't `vercel env pull`: it writes the `vercel-dev` connection into `.env.local`, which
+  overrides `.env` and points local runs at Neon instead of the local database.
 - `neon` CLI: `bunx neon@latest`. Use `--no-env-pull` with `neon link` or
   `neon checkout`, or they write Neon's `DATABASE_URL` into `.env`.
