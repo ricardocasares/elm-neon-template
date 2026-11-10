@@ -289,9 +289,9 @@ committed migrations, whose hash covers their comments.
   from a git checkout too. The card shows them in its footer, with a commit shortened to
   7 characters and linked to GitHub.
 - The card keeps its size while it loads, so nothing below it moves: the first check
-  renders a row per `Api.checkNames` with a grey pulsing dot and `UI.Skeleton`s for the latency and the
-  footer, a refresh keeps the last report on screen with pulsing dots, and a footer with
-  nothing to show keeps its height with invisible text. Name checks only in
+  renders a row per `Api.checkNames` with a grey pulsing dot and `UI.Skeleton`s for the
+  latency and the footer, a refresh keeps the last report on screen with pulsing dots,
+  and a footer with nothing to show keeps its height with invisible text. Name checks only in
   `Api.namedChecks`, which both the rows and the placeholders read.
 - `ApiClient` reads an error status's body with `Api.errorDecoder` first, then with the
   endpoint's own response decoder, so the browser app gets the health report on a 503
