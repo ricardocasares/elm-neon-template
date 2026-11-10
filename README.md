@@ -20,11 +20,6 @@ gh repo create my-app --template ricardocasares/elm-neon-template --private --cl
 cd my-app
 bun install
 cp .env.example .env
-bun run dev:proxy
-/Applications/Postgres.app/Contents/Versions/latest/bin/psql postgres://postgres@localhost:5432/postgres \
-  -c "SET scram_iterations = 1" \
-  -c "CREATE ROLE app LOGIN PASSWORD 'app'" \
-  -c "CREATE DATABASE app OWNER app"
 bun db migrate
 bun dev
 ```
