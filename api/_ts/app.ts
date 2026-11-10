@@ -11,11 +11,27 @@ const fromResolver = (resolver: JsonValue) => resolver as unknown as Resolve;
 
 const local = process.env.VERCEL ? null : "local";
 
+const commitUrl = () => {
+  const {
+    VERCEL_GIT_PROVIDER,
+    VERCEL_GIT_REPO_OWNER,
+    VERCEL_GIT_REPO_SLUG,
+    VERCEL_GIT_COMMIT_SHA,
+  } = process.env;
+  return VERCEL_GIT_PROVIDER === "github" &&
+    VERCEL_GIT_REPO_OWNER &&
+    VERCEL_GIT_REPO_SLUG &&
+    VERCEL_GIT_COMMIT_SHA
+    ? `https://github.com/${VERCEL_GIT_REPO_OWNER}/${VERCEL_GIT_REPO_SLUG}/commit/${VERCEL_GIT_COMMIT_SHA}`
+    : null;
+};
+
 const app = Elm.Main.init({
   flags: {
     databaseUrl: process.env.DATABASE_URL ?? null,
     neonEndpoint: process.env.NEON_ENDPOINT ?? null,
     releaseId: process.env.VERCEL_GIT_COMMIT_SHA || process.env.VERCEL_DEPLOYMENT_ID || local,
+    releaseUrl: commitUrl(),
     region: process.env.VERCEL_REGION || local,
   },
 });

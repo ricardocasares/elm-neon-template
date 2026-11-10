@@ -3,7 +3,7 @@ module Api exposing
     , Endpoint, health
     , route, encodeBody, decodeBody, encodeResponse, responseDecoder
     , encodeError, errorDecoder
-    , Health, Check, Status(..), Release, healthOf, checks
+    , Health, Check, Status(..), Release, healthOf, checks, checkNames
     )
 
 import Json.Decode as Decode exposing (Decoder)
@@ -190,6 +190,7 @@ type alias Check =
 
 type alias Release =
     { releaseId : Maybe String
+    , releaseUrl : Maybe String
     , region : Maybe String
     }
 
@@ -208,7 +209,17 @@ healthOf release database =
 
 checks : Health -> List ( String, Check )
 checks health_ =
-    [ ( "Database", health_.database ) ]
+    List.map (\( name, check ) -> ( name, check health_ )) namedChecks
+
+
+checkNames : List String
+checkNames =
+    List.map Tuple.first namedChecks
+
+
+namedChecks : List ( String, Health -> Check )
+namedChecks =
+    [ ( "Database", .database ) ]
 
 
 healthCodec : Codec Health
@@ -220,14 +231,16 @@ healthCodec =
                     [ Just ( "status", encodeStatus h.status )
                     , Maybe.map (\id -> ( "releaseId", Encode.string id )) h.release.releaseId
                     , Maybe.map (\region -> ( "region", Encode.string region )) h.release.region
+                    , Maybe.map (\url -> ( "links", Encode.object [ ( "release", Encode.string url ) ] )) h.release.releaseUrl
                     , Just ( "checks", Encode.object [ ( "database", encodeCheck h.database ) ] )
                     ]
                 )
     , decoder =
         Decode.map3 Health
             (Decode.field "status" statusDecoder)
-            (Decode.map2 Release
+            (Decode.map3 Release
                 (Decode.maybe (Decode.field "releaseId" Decode.string))
+                (Decode.maybe (Decode.at [ "links", "release" ] Decode.string))
                 (Decode.maybe (Decode.field "region" Decode.string))
             )
             (Decode.at [ "checks", "database" ] checkDecoder)

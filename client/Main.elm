@@ -3,8 +3,8 @@ module Main exposing (Model, Msg, main)
 import Api
 import ApiClient
 import Browser
-import Html exposing (Html, div, li, p, span, text, ul)
-import Html.Attributes exposing (attribute, class)
+import Html exposing (Html, a, div, li, p, span, text, ul)
+import Html.Attributes exposing (attribute, class, href, rel, target)
 import Html.Events exposing (onClick)
 import InteropDefinitions as Interop exposing (Theme)
 import InteropPorts
@@ -12,6 +12,7 @@ import Json.Decode as Decode
 import Phosphor exposing (IconWeight(..))
 import UI.Button as Button
 import UI.Card as Card
+import UI.Skeleton as Skeleton
 import UI.Tabs as Tabs
 
 
@@ -37,7 +38,7 @@ type alias Model =
 
 
 type Health
-    = Checking
+    = Checking (Maybe Api.Health)
     | Checked Api.Health
     | Unreachable String
 
@@ -51,7 +52,7 @@ init flags =
     in
     ( { theme = Maybe.withDefault Interop.System theme
       , systemDark = systemDark
-      , health = Checking
+      , health = Checking Nothing
       }
     , checkHealth
     )
@@ -102,7 +103,7 @@ update msg model =
             ( { model | health = Unreachable message }, Cmd.none )
 
         CheckHealth ->
-            ( { model | health = Checking }, checkHealth )
+            ( { model | health = Checking (lastReport model.health) }, checkHealth )
 
         ThemeSelected theme ->
             ( { model | theme = theme }
@@ -151,37 +152,88 @@ viewHealth health =
             )
         |> Card.content []
             [ case health of
-                Checking ->
-                    viewRows [ row "animate-pulse bg-muted-foreground" "Checking…" Nothing Nothing ]
+                Checking Nothing ->
+                    viewRows (List.map (\name -> row pendingDot name Nothing Nothing) Api.checkNames)
+
+                Checking (Just report) ->
+                    viewRows (List.map (viewCheck (always pendingDot)) (Api.checks report))
+
+                Checked report ->
+                    viewRows (List.map (viewCheck statusDot) (Api.checks report))
 
                 Unreachable message ->
                     viewRows [ row "bg-red-500" "Server" Nothing (Just message) ]
-
-                Checked report ->
-                    viewRows (List.map viewCheck (Api.checks report))
             ]
-        |> withRelease health
+        |> Card.footer [ class "text-xs text-muted-foreground" ] (viewRelease health)
         |> Card.toHtml [ class "w-full max-w-sm" ]
 
 
-withRelease : Health -> Card.Card Msg -> Card.Card Msg
-withRelease health card =
+pendingDot : String
+pendingDot =
+    "animate-pulse bg-muted-foreground"
+
+
+lastReport : Health -> Maybe Api.Health
+lastReport health =
     case health of
-        Checked { release } ->
+        Checking report ->
+            report
+
+        Checked report ->
+            Just report
+
+        Unreachable _ ->
+            Nothing
+
+
+viewRelease : Health -> List (Html Msg)
+viewRelease health =
+    case ( health, Maybe.map .release (lastReport health) ) of
+        ( Checking Nothing, _ ) ->
+            [ div [ class "flex items-center gap-2", attribute "aria-hidden" "true" ]
+                [ Skeleton.view [ class "h-4 w-24" ]
+                , Skeleton.view [ class "h-4 w-20" ]
+                ]
+            ]
+
+        ( _, Just release ) ->
             case
                 List.filterMap identity
-                    [ Maybe.map (\id -> "Release " ++ shortRelease id) release.releaseId
-                    , Maybe.map (\region -> "Region " ++ region) release.region
+                    [ Maybe.map (viewReleaseId release.releaseUrl) release.releaseId
+                    , Maybe.map (\region -> [ text ("Region " ++ region) ]) release.region
                     ]
             of
                 [] ->
-                    card
+                    [ placeholder ]
 
                 parts ->
-                    Card.footer [ class "text-xs text-muted-foreground" ] [ text (String.join " · " parts) ] card
+                    [ span [] (List.concat (List.intersperse [ text " · " ] parts)) ]
 
-        _ ->
-            card
+        ( _, Nothing ) ->
+            [ placeholder ]
+
+
+placeholder : Html Msg
+placeholder =
+    span [ class "invisible", attribute "aria-hidden" "true" ] [ text "Release" ]
+
+
+viewReleaseId : Maybe String -> String -> List (Html Msg)
+viewReleaseId url id =
+    case url of
+        Just href_ ->
+            [ text "Release "
+            , a
+                [ href href_
+                , target "_blank"
+                , rel "noopener noreferrer"
+                , class "font-mono underline underline-offset-2 hover:text-foreground"
+                ]
+                [ text (shortRelease id) ]
+            ]
+
+        Nothing ->
+            [ text ("Release " ++ shortRelease id) ]
 
 
 shortRelease : String -> String
@@ -198,9 +250,9 @@ viewRows rows =
     ul [ class "flex flex-col gap-3", attribute "role" "status" ] rows
 
 
-viewCheck : ( String, Api.Check ) -> Html Msg
-viewCheck ( name, check ) =
-    row (statusDot check.status) name check.latencyMs check.output
+viewCheck : (Api.Status -> String) -> ( String, Api.Check ) -> Html Msg
+viewCheck toDot ( name, check ) =
+    row (toDot check.status) name check.latencyMs check.output
 
 
 statusDot : Api.Status -> String

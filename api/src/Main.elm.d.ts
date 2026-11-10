@@ -25,7 +25,7 @@ export type FromElm = { level : "error" | "warn" | "info"; message : string; tag
 
 export type ToElm = { request : ({ method : string } & { path : string[] } & { query : { [key: string]: string } } & { headers : { [key: string]: string } } & { body : string }); resolve : JsonValue; tag : "Request" };
 
-export type Flags = ({ databaseUrl : string | null } & { neonEndpoint : string | null } & { releaseId : string | null } & { region : string | null });
+export type Flags = ({ databaseUrl : string | null } & { neonEndpoint : string | null } & { releaseId : string | null } & { releaseUrl : string | null } & { region : string | null });
 
 export namespace Main {
   function init(options: { node?: HTMLElement | null; flags: Flags }): ElmApp;

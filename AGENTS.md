@@ -282,8 +282,17 @@ committed migrations, whose hash covers their comments.
   deploy and which region answered. `app.ts` reads them at startup: `releaseId` from
   `VERCEL_GIT_COMMIT_SHA`, or `VERCEL_DEPLOYMENT_ID` for a CLI deploy without git
   metadata, and `region` from `VERCEL_REGION`. Off Vercel (`VERCEL` unset) both are
-  `local`; on Vercel a variable that is missing leaves its field out. `releaseId` is the draft's own field; `region` is ours. The card shows
-  them in its footer, with a commit shortened to 7 characters.
+  `local`; on Vercel a variable that is missing leaves its field out. `releaseId` is the draft's own field; `region` is ours. On GitHub deploys
+  (`VERCEL_GIT_PROVIDER` is `github`) `app.ts` also builds the commit's URL from
+  `VERCEL_GIT_REPO_OWNER`, `VERCEL_GIT_REPO_SLUG` and `VERCEL_GIT_COMMIT_SHA`, and the
+  report carries it as the draft's `links.release`. Vercel fills these for CLI deploys
+  from a git checkout too. The card shows them in its footer, with a commit shortened to
+  7 characters and linked to GitHub.
+- The card keeps its size while it loads, so nothing below it moves: the first check
+  renders a row per `Api.checkNames` with a grey pulsing dot and `UI.Skeleton`s in the
+  footer, a refresh keeps the last report on screen with pulsing dots, and a footer with
+  nothing to show keeps its height with invisible text. Name checks only in
+  `Api.namedChecks`, which both the rows and the placeholders read.
 - `ApiClient` reads an error status's body with `Api.errorDecoder` first, then with the
   endpoint's own response decoder, so the browser app gets the health report on a 503
   too.

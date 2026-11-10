@@ -39,7 +39,7 @@ init flags =
                     Db.connect config
             in
             ( { db = db
-              , release = { releaseId = config.releaseId, region = config.region }
+              , release = { releaseId = config.releaseId, releaseUrl = config.releaseUrl, region = config.region }
               }
             , case db of
                 Ok connection ->
@@ -51,7 +51,7 @@ init flags =
 
         Err problem ->
             ( { db = Err "The server's flags did not decode."
-              , release = { releaseId = Nothing, region = Nothing }
+              , release = { releaseId = Nothing, releaseUrl = Nothing, region = Nothing }
               }
             , log Interop.Error ("Bad flags: " ++ Decode.errorToString problem)
             )
