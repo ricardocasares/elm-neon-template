@@ -238,12 +238,24 @@ committed migrations, whose hash covers their comments.
   `dist/client/`, one after the other: Elm processes that fill an empty `~/.elm` at once
   corrupt it.
 - The server reaches Postgres through the Neon driver; the queries are in
-  `api/src/Db.elm`. `GET /api/health` runs `SELECT now()` and answers
-  `{ "databaseTime": "..." }`, so it fails when the database can't be reached. The server
-  reads `DATABASE_URL`, and `NEON_ENDPOINT` to send queries to a local proxy instead of
-  Neon. Without `DATABASE_URL`, database routes answer 503. Database errors answer 500
-  and are logged as `[elm] Database error: ...`. JSON responses carry
-  `cache-control: no-store`.
+  `api/src/Db.elm`. The server reads `DATABASE_URL`, and `NEON_ENDPOINT` to send queries
+  to a local proxy instead of Neon. Routes that query through `withDb` answer 503 without
+  `DATABASE_URL`, and 500 on a database error, logged as `[elm] Database error: ...`.
+  JSON responses carry `cache-control: no-store`.
+- `GET /api/health` follows the IETF health check draft
+  (`application/health+json`): `status` is `pass` or `fail`, and `checks.database` has
+  the database's `status`, `latencyMs` and, when it fails, an `output`. It runs
+  `SELECT 1`, which needs no tables, with a 5 second `Neon.withTimeout`, so a hung
+  database fails the check instead of holding the request until the function times out.
+  It answers 200 on pass and 503 on fail, which is what load balancers and uptime
+  monitors look for. `output` is a short public reason (timed out, unreachable, the query
+  failed); the full error is logged as `[elm] Health check failed: ...`, since Postgres
+  messages can name roles and tables. The latency is measured with `Time.now` around the
+  query, so it includes the HTTP hop to Neon, and a first request after scale to zero
+  includes the compute starting.
+- `ApiClient` reads an error status's body with `ApiError.decoder` first, then with the
+  endpoint's own response decoder, so the browser app gets the health report on a 503
+  too.
 - Local database: see Database above. The same `DATABASE_URL` works for the proxy and
   for a direct connection, as a Neon connection string does, so the server and Graphile
   Migrate share it.
@@ -258,9 +270,8 @@ committed migrations, whose hash covers their comments.
 - Neon turns `boolean` into a JSON boolean; `smallint`, `integer`, `real` and
   `double precision` into numbers; `json`, `jsonb` and arrays into JSON; and `NULL` into
   `null` (`Decode.nullable`). Everything else is a string as Postgres prints it,
-  including `bigint`, `numeric` and `timestamptz`, so they stay exact: `Db.now` casts
-  `now()` to `text` for the same reason. If two columns share a name, the row keeps the
-  last one, so rename them with `AS`.
+  including `bigint`, `numeric` and `timestamptz`, so they stay exact. If two columns
+  share a name, the row keeps the last one, so rename them with `AS`.
 - Parameters are sent as Postgres text, as in the official driver, and Postgres converts
   them to the column types. `Neon.json` is for `json` and `jsonb` columns.
 - `Neon.connect` derives the HTTP endpoint from the connection string's host, as the

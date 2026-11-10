@@ -13,8 +13,17 @@ are all Elm. It deploys to Vercel, with Postgres on Neon.
 - **Shared contract** (`shared/`): the routes, endpoints and JSON codecs both sides compile
   against, so the client can't call a route the server doesn't have.
 
-It ships with one route, `GET /api/health`, which asks the database for the time and answers
-`{ "databaseTime": "..." }`. The browser app calls it and shows the result.
+It ships with one route, `GET /api/health`, for uptime monitors and load balancers. It runs
+`SELECT 1` with a 5 second timeout and answers in the
+[health check format](https://datatracker.ietf.org/doc/html/draft-inadarei-api-health-check):
+
+```json
+{ "status": "pass", "checks": { "database": { "status": "pass", "latencyMs": 12 } } }
+```
+
+with 200, or `"status": "fail"`, an `output` saying why, and 503 when the database is not
+configured, times out, can't be reached or rejects the query. The browser app calls it and
+shows the result.
 
 ## Use this template
 
@@ -87,7 +96,8 @@ curl localhost:5173/api/health
    and `routesAt`.
 2. For a JSON route, add an `Endpoint` with the codecs for its body and response.
 3. Handle the route in `handle` in `api/src/Main.elm`: the server won't compile until you do.
-   Put its queries in `api/src/Db.elm`.
+   Put its queries in `api/src/Db.elm`, and run them with `withDb`, which answers 503 when
+   there is no database and 500 when a query fails.
 4. Call it from the browser with `ApiClient.request`.
 
 ## Changing the schema

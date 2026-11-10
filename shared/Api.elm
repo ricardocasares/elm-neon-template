@@ -2,7 +2,7 @@ module Api exposing
     ( Route(..), Method(..), Problem(..), parse, method, path, toString, methodToString
     , Endpoint, health
     , route, encodeBody, decodeBody, encodeResponse, responseDecoder
-    , Health
+    , Health, Check, Status(..), healthOf
     )
 
 import Json.Decode as Decode exposing (Decoder)
@@ -163,13 +163,85 @@ responseDecoder (Endpoint e) =
 -- PAYLOADS
 
 
-type alias Health =
-    { databaseTime : String
+type Status
+    = Pass
+    | Fail
+
+
+type alias Check =
+    { status : Status
+    , latencyMs : Maybe Int
+    , output : Maybe String
     }
+
+
+type alias Health =
+    { status : Status
+    , database : Check
+    }
+
+
+healthOf : Check -> Health
+healthOf database =
+    { status = database.status, database = database }
 
 
 healthCodec : Codec Health
 healthCodec =
-    { encode = \h -> Encode.object [ ( "databaseTime", Encode.string h.databaseTime ) ]
-    , decoder = Decode.map Health (Decode.field "databaseTime" Decode.string)
+    { encode =
+        \h ->
+            Encode.object
+                [ ( "status", encodeStatus h.status )
+                , ( "checks", Encode.object [ ( "database", encodeCheck h.database ) ] )
+                ]
+    , decoder =
+        Decode.map2 Health
+            (Decode.field "status" statusDecoder)
+            (Decode.at [ "checks", "database" ] checkDecoder)
     }
+
+
+encodeCheck : Check -> Encode.Value
+encodeCheck check =
+    Encode.object
+        (List.filterMap identity
+            [ Just ( "status", encodeStatus check.status )
+            , Maybe.map (\ms -> ( "latencyMs", Encode.int ms )) check.latencyMs
+            , Maybe.map (\output -> ( "output", Encode.string output )) check.output
+            ]
+        )
+
+
+checkDecoder : Decoder Check
+checkDecoder =
+    Decode.map3 Check
+        (Decode.field "status" statusDecoder)
+        (Decode.maybe (Decode.field "latencyMs" Decode.int))
+        (Decode.maybe (Decode.field "output" Decode.string))
+
+
+encodeStatus : Status -> Encode.Value
+encodeStatus status =
+    case status of
+        Pass ->
+            Encode.string "pass"
+
+        Fail ->
+            Encode.string "fail"
+
+
+statusDecoder : Decoder Status
+statusDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\status ->
+                case status of
+                    "pass" ->
+                        Decode.succeed Pass
+
+                    "fail" ->
+                        Decode.succeed Fail
+
+                    _ ->
+                        Decode.fail ("Unknown health status: " ++ status)
+            )

@@ -9,6 +9,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Neon
 import Task exposing (Task)
+import Time
 
 
 main : Program Decode.Value Model Msg
@@ -48,11 +49,12 @@ init flags =
 type Msg
     = GotInterop (Result Decode.Error Interop.ToElm)
     | Answered Interop.Resolver (Result Neon.Error Response)
+    | DatabaseChecked Interop.Resolver ( Int, Result Neon.Error () )
 
 
 type Reply
     = Now Response
-    | Later (Task Neon.Error Response)
+    | Later (Interop.Resolver -> Cmd Msg)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -67,8 +69,8 @@ update msg model =
                 Now response ->
                     ( next, InteropPorts.fromElm (Interop.Respond resolver response) )
 
-                Later task ->
-                    ( next, Task.attempt (Answered resolver) task )
+                Later toCmd ->
+                    ( next, toCmd resolver )
 
         Answered resolver (Ok response) ->
             ( model, InteropPorts.fromElm (Interop.Respond resolver response) )
@@ -78,6 +80,25 @@ update msg model =
             , Cmd.batch
                 [ InteropPorts.fromElm (Interop.Respond resolver (error 500 "Database error."))
                 , InteropPorts.fromElm (Interop.Log ("Database error: " ++ Neon.errorToString problem))
+                ]
+            )
+
+        DatabaseChecked resolver ( latency, Ok () ) ->
+            ( model
+            , InteropPorts.fromElm
+                (Interop.Respond resolver
+                    (health { status = Api.Pass, latencyMs = Just latency, output = Nothing })
+                )
+            )
+
+        DatabaseChecked resolver ( latency, Err problem ) ->
+            ( model
+            , Cmd.batch
+                [ InteropPorts.fromElm
+                    (Interop.Respond resolver
+                        (health { status = Api.Fail, latencyMs = Just latency, output = Just (failure problem) })
+                    )
+                , InteropPorts.fromElm (Interop.Log ("Health check failed: " ++ Neon.errorToString problem))
                 ]
             )
 
@@ -118,18 +139,60 @@ handle model _ r =
     case r of
         Api.GetHealth ->
             ( model
-            , withDb model <|
-                \db ->
-                    Neon.run db Db.now
-                        |> Task.map
-                            (\found ->
-                                case found of
-                                    Just time ->
-                                        ok Api.health { databaseTime = time }
+            , case model.db of
+                Ok db ->
+                    Later
+                        (\resolver ->
+                            Neon.run (Neon.withTimeout healthTimeout db) Db.ping
+                                |> timed
+                                |> Task.perform (DatabaseChecked resolver)
+                        )
 
-                                    Nothing ->
-                                        error 500 "The database returned no rows."
-                            )
+                Err problem ->
+                    Now (health { status = Api.Fail, latencyMs = Nothing, output = Just ("Not configured: " ++ problem) })
+            )
+
+
+healthTimeout : Float
+healthTimeout =
+    5000
+
+
+failure : Neon.Error -> String
+failure problem =
+    case problem of
+        Neon.Timeout ->
+            "Timed out after " ++ String.fromFloat healthTimeout ++ " ms."
+
+        Neon.NetworkError ->
+            "Unreachable."
+
+        Neon.BadUrl _ ->
+            "Unreachable."
+
+        Neon.ServerError status _ ->
+            "Neon answered with HTTP " ++ String.fromInt status ++ "."
+
+        Neon.QueryFailed _ ->
+            "The query failed."
+
+        Neon.UnexpectedResult _ ->
+            "Unexpected result."
+
+
+timed : Task x a -> Task Never ( Int, Result x a )
+timed task =
+    Time.now
+        |> Task.andThen
+            (\start ->
+                task
+                    |> Task.map Ok
+                    |> Task.onError (Err >> Task.succeed)
+                    |> Task.andThen
+                        (\result ->
+                            Time.now
+                                |> Task.map (\end -> ( Time.posixToMillis end - Time.posixToMillis start, result ))
+                        )
             )
 
 
@@ -137,7 +200,7 @@ withDb : Model -> (Neon.Connection -> Task Neon.Error Response) -> Reply
 withDb model query =
     case model.db of
         Ok db ->
-            Later (query db)
+            Later (\resolver -> Task.attempt (Answered resolver) (query db))
 
         Err problem ->
             Now (error 503 ("The database is not configured: " ++ problem))
@@ -163,6 +226,24 @@ ok =
 respond : Int -> Api.Endpoint body response -> response -> Response
 respond status endpoint value =
     json status (Api.encodeResponse endpoint value)
+
+
+health : Api.Check -> Response
+health check =
+    let
+        report =
+            Api.healthOf check
+    in
+    { status =
+        case report.status of
+            Api.Pass ->
+                200
+
+            Api.Fail ->
+                503
+    , headers = [ ( "content-type", "application/health+json" ), ( "cache-control", "no-store" ) ]
+    , body = Encode.encode 0 (Api.encodeResponse Api.health report)
+    }
 
 
 error : Int -> String -> Response

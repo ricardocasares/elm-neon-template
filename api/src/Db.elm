@@ -1,6 +1,5 @@
-module Db exposing (connect, now)
+module Db exposing (connect, ping)
 
-import Json.Decode as Decode
 import Neon
 
 
@@ -20,6 +19,7 @@ connect config =
                     )
 
 
-now : Neon.Query (Maybe String)
-now =
-    Neon.selectOne "SELECT now()::text AS now" [] (Decode.field "now" Decode.string)
+ping : Neon.Query ()
+ping =
+    Neon.execute "SELECT 1" []
+        |> Neon.map (always ())

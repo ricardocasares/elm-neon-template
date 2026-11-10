@@ -44,13 +44,18 @@ expect toMsg decoder =
                     Err "Could not reach the server. Start both apps with `bun dev`."
 
                 Http.BadStatus_ metadata body ->
-                    Decode.decodeString ApiError.decoder body
-                        |> Result.withDefault
-                            ("The server answered with status "
-                                ++ String.fromInt metadata.statusCode
-                                ++ ". Is it running? Start both apps with `bun dev`."
-                            )
-                        |> Err
+                    case Decode.decodeString ApiError.decoder body of
+                        Ok message ->
+                            Err message
+
+                        Err _ ->
+                            Decode.decodeString decoder body
+                                |> Result.mapError
+                                    (\_ ->
+                                        "The server answered with status "
+                                            ++ String.fromInt metadata.statusCode
+                                            ++ ". Is it running? Start both apps with `bun dev`."
+                                    )
 
                 Http.GoodStatus_ _ body ->
                     Decode.decodeString decoder body

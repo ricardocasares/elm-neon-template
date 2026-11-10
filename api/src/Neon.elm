@@ -1,5 +1,5 @@
 module Neon exposing
-    ( Connection, connect, withEndpoint, endpoint
+    ( Connection, connect, withEndpoint, withTimeout, endpoint
     , Param, text, int, float, bool, json, null, nullable
     , Query, select, selectOne, execute, map, run
     , Transaction, transaction, with, commit
@@ -20,6 +20,7 @@ type Connection
     = Connection
         { connectionString : String
         , endpoint : String
+        , timeout : Maybe Float
         }
 
 
@@ -31,6 +32,7 @@ connect connectionString =
                 (Connection
                     { connectionString = connectionString
                     , endpoint = "https://" ++ apiHost host ++ "/sql"
+                    , timeout = Nothing
                     }
                 )
 
@@ -41,6 +43,11 @@ connect connectionString =
 withEndpoint : String -> Connection -> Connection
 withEndpoint url (Connection c) =
     Connection { c | endpoint = url }
+
+
+withTimeout : Float -> Connection -> Connection
+withTimeout milliseconds (Connection c) =
+    Connection { c | timeout = Just milliseconds }
 
 
 endpoint : Connection -> String
@@ -364,7 +371,7 @@ request (Connection c) body decoder =
         , url = c.endpoint
         , body = Http.jsonBody body
         , resolver = Http.stringResolver (resolve decoder)
-        , timeout = Nothing
+        , timeout = c.timeout
         }
 
 

@@ -3,7 +3,7 @@ module Main exposing (Model, Msg, main)
 import Api
 import ApiClient
 import Browser
-import Html exposing (Html, code, div, h1, p, text)
+import Html exposing (Html, code, div, h1, p, span, text)
 import Html.Attributes exposing (class)
 import Html.Events exposing (onClick)
 import InteropDefinitions as Interop exposing (Theme)
@@ -11,6 +11,7 @@ import InteropPorts
 import Json.Decode as Decode
 import Process
 import Task
+import UI.Badge as Badge
 import UI.Button as Button
 import UI.Card as Card
 import UI.Spinner as Spinner
@@ -215,14 +216,41 @@ viewHealth health =
                     div [ class "flex justify-center py-4" ]
                         [ Spinner.view [ class "size-6 text-muted-foreground" ] ]
 
-                Healthy { databaseTime } ->
-                    p [ class "text-sm" ]
-                        [ text "The database answered at "
-                        , code [] [ text databaseTime ]
-                        , text "."
-                        ]
+                Healthy report ->
+                    viewCheck "Database" report.database
 
                 Unhealthy message ->
                     p [ class "text-sm text-destructive" ] [ text message ]
             ]
         |> Card.toHtml [ class "w-full max-w-sm" ]
+
+
+viewCheck : String -> Api.Check -> Html Msg
+viewCheck name check =
+    div [ class "flex flex-wrap items-center gap-2 text-sm" ]
+        [ span [ class "mr-auto" ] [ text name ]
+        , case check.latencyMs of
+            Just ms ->
+                span [ class "text-muted-foreground" ] [ text (String.fromInt ms ++ " ms") ]
+
+            Nothing ->
+                text ""
+        , case check.status of
+            Api.Pass ->
+                Badge.new
+                    |> Badge.text "pass"
+                    |> Badge.secondary
+                    |> Badge.toHtml []
+
+            Api.Fail ->
+                Badge.new
+                    |> Badge.text "fail"
+                    |> Badge.destructive
+                    |> Badge.toHtml []
+        , case check.output of
+            Just output ->
+                p [ class "w-full text-destructive" ] [ text output ]
+
+            Nothing ->
+                text ""
+        ]
