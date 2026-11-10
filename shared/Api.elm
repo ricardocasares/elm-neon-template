@@ -2,6 +2,7 @@ module Api exposing
     ( Route(..), Method(..), Problem(..), parse, method, path, toString, methodToString
     , Endpoint, health
     , route, encodeBody, decodeBody, encodeResponse, responseDecoder
+    , encodeError, errorDecoder
     , Health, Check, Status(..), healthOf
     )
 
@@ -157,6 +158,17 @@ encodeResponse (Endpoint e) =
 responseDecoder : Endpoint body response -> Decoder response
 responseDecoder (Endpoint e) =
     e.response.decoder
+
+
+
+encodeError : String -> Encode.Value
+encodeError message =
+    Encode.object [ ( "error", Encode.string message ) ]
+
+
+errorDecoder : Decoder String
+errorDecoder =
+    Decode.field "error" Decode.string
 
 
 

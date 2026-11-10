@@ -1,7 +1,6 @@
 module ApiClient exposing (request)
 
 import Api exposing (Endpoint)
-import ApiError
 import Http
 import Json.Decode as Decode
 
@@ -44,7 +43,7 @@ expect toMsg decoder =
                     Err "Could not reach the server. Start both apps with `bun dev`."
 
                 Http.BadStatus_ metadata body ->
-                    case Decode.decodeString ApiError.decoder body of
+                    case Decode.decodeString Api.errorDecoder body of
                         Ok message ->
                             Err message
 

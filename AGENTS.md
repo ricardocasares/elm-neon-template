@@ -214,6 +214,9 @@ committed migrations, whose hash covers their comments.
   `Api.path`.
 - `Api.Endpoint body response` ties a JSON route to its request and response types. The
   browser app calls the server only through `ApiClient.request` with an endpoint.
+- Every route can fail with `{ "error": "..." }`, so the error body is part of `Api` too:
+  the server writes it with `Api.encodeError` and the browser reads it with
+  `Api.errorDecoder`.
 
 ### Browser app
 
@@ -255,7 +258,7 @@ committed migrations, whose hash covers their comments.
   messages can name roles and tables. The latency is measured with `Time.now` around the
   query, so it includes the HTTP hop to Neon, and a first request after scale to zero
   includes the compute starting.
-- `ApiClient` reads an error status's body with `ApiError.decoder` first, then with the
+- `ApiClient` reads an error status's body with `Api.errorDecoder` first, then with the
   endpoint's own response decoder, so the browser app gets the health report on a 503
   too.
 - Local database: see Database above. The same `DATABASE_URL` works for the proxy and

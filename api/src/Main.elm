@@ -1,7 +1,6 @@
 module Main exposing (Model, Msg, main)
 
 import Api
-import ApiError
 import Db
 import InteropDefinitions as Interop exposing (Request, Response)
 import InteropPorts
@@ -266,4 +265,4 @@ health check =
 
 error : Int -> String -> Response
 error status message =
-    json status (ApiError.encode message)
+    json status (Api.encodeError message)
