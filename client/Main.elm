@@ -160,7 +160,37 @@ viewHealth health =
                 Checked report ->
                     viewRows (List.map viewCheck (Api.checks report))
             ]
+        |> withRelease health
         |> Card.toHtml [ class "w-full max-w-sm" ]
+
+
+withRelease : Health -> Card.Card Msg -> Card.Card Msg
+withRelease health card =
+    case health of
+        Checked { release } ->
+            case
+                List.filterMap identity
+                    [ Maybe.map (\id -> "Release " ++ shortRelease id) release.releaseId
+                    , Maybe.map (\region -> "Region " ++ region) release.region
+                    ]
+            of
+                [] ->
+                    card
+
+                parts ->
+                    Card.footer [ class "text-xs text-muted-foreground" ] [ text (String.join " · " parts) ] card
+
+        _ ->
+            card
+
+
+shortRelease : String -> String
+shortRelease id =
+    if String.startsWith "dpl_" id then
+        id
+
+    else
+        String.left 7 id
 
 
 viewRows : List (Html Msg) -> Html Msg

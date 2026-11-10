@@ -26,6 +26,7 @@ main =
 
 type alias Model =
     { db : Result String Neon.Connection
+    , release : Api.Release
     }
 
 
@@ -37,7 +38,9 @@ init flags =
                 db =
                     Db.connect config
             in
-            ( { db = db }
+            ( { db = db
+              , release = { releaseId = config.releaseId, region = config.region }
+              }
             , case db of
                 Ok connection ->
                     log Interop.Info ("Sending queries to " ++ Neon.endpoint connection)
@@ -47,7 +50,9 @@ init flags =
             )
 
         Err problem ->
-            ( { db = Err "The server's flags did not decode." }
+            ( { db = Err "The server's flags did not decode."
+              , release = { releaseId = Nothing, region = Nothing }
+              }
             , log Interop.Error ("Bad flags: " ++ Decode.errorToString problem)
             )
 
@@ -104,7 +109,7 @@ update msg model =
                 , Cmd.batch
                     [ InteropPorts.fromElm
                         (Interop.Respond resolver
-                            (health
+                            (health model
                                 { status = Api.Warn
                                 , latencyMs = Just latency
                                 , output = Just ("Slower than " ++ String.fromInt slowAfter ++ " ms.")
@@ -119,7 +124,7 @@ update msg model =
                 ( model
                 , InteropPorts.fromElm
                     (Interop.Respond resolver
-                        (health { status = Api.Pass, latencyMs = Just latency, output = Nothing })
+                        (health model { status = Api.Pass, latencyMs = Just latency, output = Nothing })
                     )
                 )
 
@@ -128,7 +133,7 @@ update msg model =
             , Cmd.batch
                 [ InteropPorts.fromElm
                     (Interop.Respond resolver
-                        (health { status = Api.Fail, latencyMs = Just latency, output = Just (failure problem) })
+                        (health model { status = Api.Fail, latencyMs = Just latency, output = Just (failure problem) })
                     )
                 , log Interop.Error ("Health check failed: " ++ Neon.errorToString problem)
                 ]
@@ -181,7 +186,7 @@ handle model _ r =
                         )
 
                 Err problem ->
-                    Now (health { status = Api.Fail, latencyMs = Nothing, output = Just ("Not configured: " ++ problem) })
+                    Now (health model { status = Api.Fail, latencyMs = Nothing, output = Just ("Not configured: " ++ problem) })
             )
 
 
@@ -265,11 +270,11 @@ respond status endpoint value =
     json status (Api.encodeResponse endpoint value)
 
 
-health : Api.Check -> Response
-health check =
+health : Model -> Api.Check -> Response
+health model check =
     let
         report =
-            Api.healthOf check
+            Api.healthOf model.release check
     in
     { status =
         case report.status of

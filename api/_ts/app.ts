@@ -13,6 +13,8 @@ const app = Elm.Main.init({
   flags: {
     databaseUrl: process.env.DATABASE_URL ?? null,
     neonEndpoint: process.env.NEON_ENDPOINT ?? null,
+    releaseId: process.env.VERCEL_GIT_COMMIT_SHA || process.env.VERCEL_DEPLOYMENT_ID || null,
+    region: process.env.VERCEL_REGION || null,
   },
 });
 

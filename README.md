@@ -18,7 +18,12 @@ It ships with one route, `GET /api/health`, for uptime monitors and load balance
 [health check format](https://datatracker.ietf.org/doc/html/draft-inadarei-api-health-check):
 
 ```json
-{ "status": "pass", "checks": { "database": { "status": "pass", "latencyMs": 12 } } }
+{
+  "status": "pass",
+  "releaseId": "1e8c2dc9f00ba5e",
+  "region": "arn1",
+  "checks": { "database": { "status": "pass", "latencyMs": 12 } }
+}
 ```
 
 with 200. It answers `"warn"`, still with 200, when the database took over a second, and

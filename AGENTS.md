@@ -278,6 +278,12 @@ committed migrations, whose hash covers their comments.
   messages can name roles and tables. The latency is measured with `Time.now` around the
   query, so it includes the HTTP hop to Neon, and a first request after scale to zero
   includes the compute starting.
+- The health report also carries `releaseId` and `region`, so a report says which
+  deploy and which region answered. `app.ts` reads them at startup: `releaseId` from
+  `VERCEL_GIT_COMMIT_SHA`, or `VERCEL_DEPLOYMENT_ID` for a CLI deploy without git
+  metadata, and `region` from `VERCEL_REGION`. Locally they are unset and the fields
+  are left out. `releaseId` is the draft's own field; `region` is ours. The card shows
+  them in its footer, with a commit shortened to 7 characters.
 - `ApiClient` reads an error status's body with `Api.errorDecoder` first, then with the
   endpoint's own response decoder, so the browser app gets the health report on a 503
   too.
