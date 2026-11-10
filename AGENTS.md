@@ -202,9 +202,9 @@ committed migrations, whose hash covers their comments.
   package a `shared/` module imports must be in both `elm.json` files.
 - Each project has its own `InteropDefinitions` and `InteropPorts`, typed with
   elm-ts-interop. After changing either `InteropDefinitions.elm`, run `bun run types`.
-- `app.ts` and `client/main.ts` handle `FromElm` in a `switch` on `tag` that ends in
-  `default: return fromElm satisfies never;`, so a new `FromElm` variant doesn't type
-  check until the TypeScript side handles it. Keep that `default` in every such `switch`.
+- `app.ts` and `client/main.ts` receive each `FromElm` value as `msg` and handle it in a
+  `switch (msg.tag)` that ends in `default: return msg satisfies never;`, so a new
+  `FromElm` variant doesn't type check until the TypeScript side handles it. Keep that `default` in every such `switch`.
 
 ### Shared Elm code
 

@@ -32,10 +32,10 @@ media.addEventListener("change", (event) =>
 
 //-- PORTS:SUBSCRIBE
 
-app.ports.interopFromElm.subscribe((fromElm) => {
-  switch (fromElm.tag) {
+app.ports.interopFromElm.subscribe((msg) => {
+  switch (msg.tag) {
     case "CopyToClipboard":
-      return navigator.clipboard.writeText(fromElm.data).catch((error) =>
+      return navigator.clipboard.writeText(msg.data).catch((error) =>
         app.ports.interopToElm.send({
           tag: "ClipboardError",
           message: String(error),
@@ -44,27 +44,27 @@ app.ports.interopFromElm.subscribe((fromElm) => {
 
     case "ReadFromLocalStorage":
       try {
-        return localStorage.getItem(fromElm.data);
+        return localStorage.getItem(msg.data);
       } catch (error) {
         return app.ports.interopToElm.send({
           tag: "LocalStorageError",
-          key: fromElm.data,
+          key: msg.data,
           message: String(error),
         });
       }
 
     case "WriteToLocalStorage":
       try {
-        return localStorage.setItem(fromElm.data.key, fromElm.data.value);
+        return localStorage.setItem(msg.data.key, msg.data.value);
       } catch (error) {
         return app.ports.interopToElm.send({
           tag: "LocalStorageError",
-          key: fromElm.data.key,
+          key: msg.data.key,
           message: String(error),
         });
       }
 
     default:
-      return fromElm satisfies never;
+      return msg satisfies never;
   }
 });

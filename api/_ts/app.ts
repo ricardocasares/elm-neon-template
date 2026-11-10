@@ -18,21 +18,21 @@ const app = Elm.Main.init({
 
 //-- PORTS:SUBSCRIBE
 
-app.ports.interopFromElm.subscribe((fromElm) => {
-  switch (fromElm.tag) {
+app.ports.interopFromElm.subscribe((msg) => {
+  switch (msg.tag) {
     case "Respond":
-      return fromResolver(fromElm.resolve)(
-        new Response(fromElm.body, {
-          status: fromElm.status,
-          headers: fromElm.headers,
+      return fromResolver(msg.resolve)(
+        new Response(msg.body, {
+          status: msg.status,
+          headers: msg.headers,
         }),
       );
 
     case "Log":
-      return console[fromElm.level](fromElm.message);
+      return console[msg.level](msg.message);
 
     default:
-      return fromElm satisfies never;
+      return msg satisfies never;
   }
 });
 
