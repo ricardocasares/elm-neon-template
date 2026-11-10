@@ -1,0 +1,34 @@
+{
+  "name": "elm-neon-template",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.4",
+  "trustedDependencies": [
+    "elm"
+  ],
+  "scripts": {
+    "db": "bun node_modules/graphile-migrate/dist/cli.js",
+    "dev": "bun run --parallel types dev:*",
+    "dev:vite": "bun node_modules/vite/bin/vite.js",
+    "build": "bun run --sequential types:* check build:*",
+    "build:vite": "vite build",
+    "types": "bun run --parallel types:*",
+    "types:api": "cd api && elm-ts-interop --output src/Main.elm.d.ts",
+    "types:app": "elm-ts-interop --definition-dir client --output client/Main.elm.d.ts",
+    "check": "bun run --parallel check:*",
+    "check:api": "bun check --no-script -p api",
+    "check:app": "bun check --no-script",
+    "preview": "bun node_modules/vite/bin/vite.js preview"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@types/bun": "^1.4.4",
+    "elm": "^0.19.3-0",
+    "elm-ts-interop": "^0.0.8",
+    "graphile-migrate": "^1.4.1",
+    "tailwindcss": "4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vite-plugin-elm": "^3.0.1"
+  }
+}

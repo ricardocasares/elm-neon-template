@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "bunVersion": "1.x",
+  "regions": ["arn1"],
+  "installCommand": "bun install",
+  "buildCommand": "DATABASE_URL=\"$DATABASE_URL_UNPOOLED\" bun db migrate && bun run build",
+  "outputDirectory": "dist/client",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api"
+    }
+  ]
+}

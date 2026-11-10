@@ -1,0 +1,3 @@
+[fmt]
+# The width the code was written to; Prettier's default is 80.
+printWidth = 100

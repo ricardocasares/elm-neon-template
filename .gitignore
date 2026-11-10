@@ -1,0 +1,9 @@
+node_modules/
+elm-stuff/
+dist/
+.vercel/
+.vercel
+.env
+.env*.local
+.neon
+.DS_Store

@@ -1,0 +1,5 @@
+*.elm.d.ts
+.agents/skills/
+skills-lock.json
+.mcp.json
+.claude/skills/

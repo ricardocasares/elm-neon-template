@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "elm-patterns": {
+      "source": "ricardocasares/skills",
+      "sourceType": "github",
+      "skillPath": "skills/elm/elm-patterns/SKILL.md",
+      "computedHash": "d16a087b26f082ab8968ca7a34f46fe6d1a114fe98b2ca6a1c3258a3f39b8529"
+    },
+    "neon": {
+      "source": "neondatabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/neon/SKILL.md",
+      "computedHash": "598ace820e41026d6272d2d6de37c330c9d0bf751ff1947d40ddd8a52c03436d"
+    },
+    "neon-postgres": {
+      "source": "neondatabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/neon-postgres/SKILL.md",
+      "computedHash": "752cee6dde53a738b4b994cb1962a60c036b215eab97adc975dce0e3416d92b6"
+    },
+    "postgres-rls-multi-tenancy": {
+      "source": "ricardocasares/skills",
+      "sourceType": "github",
+      "skillPath": "skills/postgres/postgres-rls-multi-tenancy/SKILL.md",
+      "computedHash": "c6daf03613a57d5665e1efe074d6a690347689bd7c7e355841a7570118f198f9"
+    }
+  }
+}
