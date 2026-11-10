@@ -34,37 +34,14 @@ media.addEventListener("change", (event) =>
 
 app.ports.interopFromElm.subscribe((msg) => {
   switch (msg.tag) {
-    case "CopyToClipboard":
-      return navigator.clipboard.writeText(msg.data).catch((error) =>
-        app.ports.interopToElm.send({
-          tag: "ClipboardError",
-          message: String(error),
-        }),
-      );
-
-    case "ReadFromLocalStorage":
-      try {
-        return localStorage.getItem(msg.data);
-      } catch (error) {
-        return app.ports.interopToElm.send({
-          tag: "LocalStorageError",
-          key: msg.data,
-          message: String(error),
-        });
-      }
-
     case "WriteToLocalStorage":
       try {
         return localStorage.setItem(msg.data.key, msg.data.value);
-      } catch (error) {
-        return app.ports.interopToElm.send({
-          tag: "LocalStorageError",
-          key: msg.data.key,
-          message: String(error),
-        });
+      } catch {
+        return;
       }
 
     default:
-      return msg satisfies never;
+      return msg.tag satisfies never;
   }
 });

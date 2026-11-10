@@ -20,7 +20,6 @@ main =
         }
 
 
-
 -- MODEL
 
 
@@ -62,13 +61,11 @@ log level message =
     InteropPorts.fromElm (Interop.Log level message)
 
 
-
 -- UPDATE
 
 
 type Msg
     = GotInterop (Result Decode.Error Interop.ToElm)
-    | Answered Interop.Resolver (Result Neon.Error Response)
     | DatabaseChecked Interop.Resolver ( Int, Result Neon.Error () )
 
 
@@ -91,17 +88,6 @@ update msg model =
 
                 Later toCmd ->
                     ( next, toCmd resolver )
-
-        Answered resolver (Ok response) ->
-            ( model, InteropPorts.fromElm (Interop.Respond resolver response) )
-
-        Answered resolver (Err problem) ->
-            ( model
-            , Cmd.batch
-                [ InteropPorts.fromElm (Interop.Respond resolver (error 500 "Database error."))
-                , log Interop.Error ("Database error: " ++ Neon.errorToString problem)
-                ]
-            )
 
         DatabaseChecked resolver ( latency, Ok () ) ->
             if latency > slowAfter then
@@ -141,7 +127,6 @@ update msg model =
 
         GotInterop (Err _) ->
             ( model, Cmd.none )
-
 
 
 -- ROUTES
@@ -238,16 +223,6 @@ timed task =
             )
 
 
-withDb : Model -> (Neon.Connection -> Task Neon.Error Response) -> Reply
-withDb model query =
-    case model.db of
-        Ok db ->
-            Later (\resolver -> Task.attempt (Answered resolver) (query db))
-
-        Err problem ->
-            Now (error 503 ("The database is not configured: " ++ problem))
-
-
 
 -- RESPONSES
 
@@ -258,16 +233,6 @@ json status value =
     , headers = [ ( "content-type", "application/json" ), ( "cache-control", "no-store" ) ]
     , body = Encode.encode 0 value
     }
-
-
-ok : Api.Endpoint body response -> response -> Response
-ok =
-    respond 200
-
-
-respond : Int -> Api.Endpoint body response -> response -> Response
-respond status endpoint value =
-    json status (Api.encodeResponse endpoint value)
 
 
 health : Model -> Api.Check -> Response

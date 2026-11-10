@@ -60,7 +60,11 @@ database.
   doesn't compile until the server handles it. Keep `Api.parse` in step with
   `Api.method` and `Api.path`.
 - **Every `FromElm` is handled**: the port handlers in `app.ts` and `client/main.ts` take
-  `msg` and end `switch (msg.tag)` with `default: return msg satisfies never;`.
+  `msg` and end `switch (msg.tag)` with a `default` that is `never`:
+  `return msg satisfies never;` when `FromElm` has several variants, but
+  `return msg.tag satisfies never;` when it has one, as in `client/`: elm-ts-interop then
+  emits a plain object, not a union, and TypeScript narrows only `msg.tag`. Switch forms
+  when the count crosses one.
 - **UI**: use the elmcn registry component instead of writing one; Phosphor
   (`phosphor-icons/phosphor-elm`, `Regular`) instead of hand-written SVG; `sr-only` text
   on icon-only controls.
@@ -158,8 +162,8 @@ mv -n src/UI/*.elm client/UI/ && ls src/UI
 - `dev.ts` reloads the server on any `.elm`/`.ts` change in `api/` or `shared/`
   (restarting from `init`); `preview` runs `dist/server/app.js`.
 - Routes are real URLs under `/api`: entry points pass requests through unchanged.
-- Errors are `{ "error": "..." }` (`Api.encodeError`). `withDb` answers 503 without
-  `DATABASE_URL` and 500 on a database error. JSON is `cache-control: no-store`.
+- Errors are `{ "error": "..." }` (`Api.encodeError`). JSON is `cache-control: no-store`.
+  Without `DATABASE_URL` the server starts anyway and the health check fails.
 - Logging: `log Interop.Info|Warn|Error message`; `app.ts` calls `console[level]` with the
   message unchanged, which Vercel reads as the level. Database errors log at `error`.
 - `GET /api/health` (IETF health check draft, `application/health+json`) runs `SELECT 1`

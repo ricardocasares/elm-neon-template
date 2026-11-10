@@ -1,7 +1,7 @@
 module Api exposing
     ( Route(..), Method(..), Problem(..), parse, method, path, toString, methodToString
     , Endpoint, health
-    , route, encodeBody, decodeBody, encodeResponse, responseDecoder
+    , route, encodeBody, encodeResponse, responseDecoder
     , encodeError, errorDecoder
     , Health, Check, Status(..), Release, healthOf, checks, checkNames
     )
@@ -137,17 +137,6 @@ encodeBody (Endpoint e) value =
 
         JsonBody codec ->
             Just (codec.encode value)
-
-
-decodeBody : Endpoint body response -> String -> Result String body
-decodeBody (Endpoint e) raw =
-    case e.body of
-        NoBody value ->
-            Ok value
-
-        JsonBody codec ->
-            Decode.decodeString codec.decoder raw
-                |> Result.mapError Decode.errorToString
 
 
 encodeResponse : Endpoint body response -> response -> Encode.Value

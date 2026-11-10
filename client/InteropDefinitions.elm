@@ -23,19 +23,13 @@ type Theme
 
 
 type FromElm
-    = CopyToClipboard String
-    | ReadFromLocalStorage String
-    | WriteToLocalStorage { key : String, value : String }
+    = WriteToLocalStorage { key : String, value : String }
 
 
 type ToElm
     = SystemThemeChanged Bool
-    | LocalStorageError { key : String, message : String }
-    | ClipboardError String
 
 
-{-| `theme` is what the user last chose, if anything.
--}
 type alias Flags =
     { theme : Maybe Theme
     , systemDark : Bool
@@ -58,19 +52,11 @@ themeToString theme =
 fromElm : Encoder FromElm
 fromElm =
     TsEncode.union
-        (\copyToClipboard readFromLocalStorage writeToLocalStorage value ->
+        (\writeToLocalStorage value ->
             case value of
-                CopyToClipboard text ->
-                    copyToClipboard text
-
-                ReadFromLocalStorage key ->
-                    readFromLocalStorage key
-
                 WriteToLocalStorage entry ->
                     writeToLocalStorage entry
         )
-        |> TsEncode.variantTagged "CopyToClipboard" TsEncode.string
-        |> TsEncode.variantTagged "ReadFromLocalStorage" TsEncode.string
         |> TsEncode.variantTagged "WriteToLocalStorage"
             (TsEncode.object
                 [ TsEncode.required "key" .key TsEncode.string
@@ -83,14 +69,7 @@ fromElm =
 toElm : Decoder ToElm
 toElm =
     TsDecode.discriminatedUnion "tag"
-        [ ( "SystemThemeChanged", TsDecode.map SystemThemeChanged (TsDecode.field "dark" TsDecode.bool) )
-        , ( "LocalStorageError"
-          , TsDecode.map2 (\key message -> LocalStorageError { key = key, message = message })
-                (TsDecode.field "key" TsDecode.string)
-                (TsDecode.field "message" TsDecode.string)
-          )
-        , ( "ClipboardError", TsDecode.map ClipboardError (TsDecode.field "message" TsDecode.string) )
-        ]
+        [ ( "SystemThemeChanged", TsDecode.map SystemThemeChanged (TsDecode.field "dark" TsDecode.bool) ) ]
 
 
 themeDecoder : Decoder Theme

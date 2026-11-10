@@ -21,9 +21,9 @@ export interface ElmApp {
   };
 }
 
-export type FromElm = { data : { key : string; value : string }; tag : "WriteToLocalStorage" } | { data : string; tag : "ReadFromLocalStorage" } | { data : string; tag : "CopyToClipboard" };
+export type FromElm = { data : { key : string; value : string }; tag : "WriteToLocalStorage" };
 
-export type ToElm = { dark : boolean; tag : "SystemThemeChanged" } | { key : string; message : string; tag : "LocalStorageError" } | { message : string; tag : "ClipboardError" };
+export type ToElm = { dark : boolean; tag : "SystemThemeChanged" };
 
 export type Flags = { systemDark : boolean; theme : ("light" | "dark" | "system") | null };
 
