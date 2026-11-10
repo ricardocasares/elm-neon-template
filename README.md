@@ -1,174 +1,96 @@
 # elm-neon-template
 
-A starter for full-stack Elm apps: the browser app, the HTTP server, and the database driver
-are all Elm. It deploys to Vercel, with Postgres on Neon.
+Full-stack Elm: an Elm browser app, an Elm HTTP server and an Elm Postgres driver, deployed to
+Vercel on Neon.
 
-- **Browser app** (`client/`): Elm, built with Vite and styled with Tailwind and
-  [elmcn](https://github.com/ricardocasares/elmcn), shadcn/ui components for Elm.
-- **Server** (`api/`): an Elm `Platform.worker` that answers HTTP requests, deployed as one
-  Vercel Function on the Bun runtime.
-- **Database**: Postgres on [Neon](https://neon.com), queried over HTTP by `Neon.elm`, a small
-  Elm driver in `api/src/`. The schema is managed with
-  [Graphile Migrate](https://github.com/graphile/migrate).
-- **Shared contract** (`shared/`): the routes, endpoints and JSON codecs both sides compile
-  against, so the client can't call a route the server doesn't have.
+| Part     | Where      | Built with                                                            |
+| -------- | ---------- | --------------------------------------------------------------------- |
+| Browser  | `client/`  | Elm, Vite, Tailwind, [elmcn](https://github.com/ricardocasares/elmcn) |
+| Server   | `api/`     | Elm `Platform.worker` in one Vercel Function (Bun runtime)            |
+| Shared   | `shared/`  | Routes, endpoints and JSON codecs both sides compile against          |
+| Database | `api/src/` | `Neon.elm`, Postgres over HTTP; schema with Graphile Migrate          |
 
-It ships with one route, `GET /api/health`, for uptime monitors and load balancers. It runs
-`SELECT 1` with a 5 second timeout and answers in the
+## Quick start
+
+Needs [Bun](https://bun.com), [Postgres.app](https://postgresapp.com) and
+[Docker](https://www.docker.com), all running.
+
+```sh
+gh repo create my-app --template ricardocasares/elm-neon-template --private --clone
+cd my-app
+bun install
+cp .env.example .env
+bun run dev:proxy
+/Applications/Postgres.app/Contents/Versions/latest/bin/psql postgres://postgres@localhost:5432/postgres \
+  -c "SET scram_iterations = 1" \
+  -c "CREATE ROLE app LOGIN PASSWORD 'app'" \
+  -c "CREATE DATABASE app OWNER app"
+bun db migrate
+bun dev
+```
+
+Open http://localhost:5173. Then rename `name` in `package.json` and `<title>` in `index.html`.
+
+## Scripts
+
+| Script              | Does                                                                      |
+| ------------------- | ------------------------------------------------------------------------- |
+| `bun dev`           | Runs `types`, `dev:proxy` and `dev:vite` together                         |
+| `bun run dev:proxy` | Starts the local Neon proxy in Docker, checks `DATABASE_URL` through it   |
+| `bun run dev:vite`  | Vite on :5173, with the Elm server on `/api`                              |
+| `bun run build`     | Types, type-check, then builds into `dist/client` and `dist/server`       |
+| `bun run preview`   | Serves the build on :4173                                                 |
+| `bun run types`     | Regenerates the TypeScript types of both Elm programs                     |
+| `bun check`         | Type-checks the browser app and the server                                |
+| `bun fmt`           | Formats everything; `--check` only reports                                |
+| `bun db <command>`  | Graphile Migrate: `migrate`, `watch`, `commit`, `status`, `reset --erase` |
+
+## Environment
+
+`.env.example` lists every variable. Copy it to `.env`.
+
+| Variable              | For                                                         |
+| --------------------- | ----------------------------------------------------------- |
+| `DATABASE_URL`        | The app's database                                          |
+| `NEON_ENDPOINT`       | The local proxy, `http://localhost:4445/sql`; not on Vercel |
+| `SHADOW_DATABASE_URL` | A scratch database for `bun db watch` and `commit`          |
+| `ROOT_DATABASE_URL`   | A superuser, for `bun db reset` and the proxy               |
+
+## Health check
+
+`GET /api/health` runs `SELECT 1` and answers in the
 [health check format](https://datatracker.ietf.org/doc/html/draft-inadarei-api-health-check):
+`pass` (200), `warn` when slower than 1 s (200), or `fail` (503).
 
 ```json
 {
   "status": "pass",
-  "releaseId": "1e8c2dc9f00ba5e",
+  "releaseId": "7990ba2…",
   "region": "arn1",
-  "checks": { "database": { "status": "pass", "latencyMs": 12 } }
+  "links": { "release": "https://github.com/…/commit/7990ba2…" },
+  "checks": { "database": { "status": "pass", "latencyMs": 25 } }
 }
 ```
 
-with 200. It answers `"warn"`, still with 200, when the database took over a second, and
-`"fail"` with 503 when the database is not configured, times out, can't be reached or rejects
-the query, with an `output` saying why. The browser app shows it as a card with a green,
-yellow or red dot.
-
-## Use this template
-
-Click **Use this template** on GitHub, or:
+## Schema changes
 
 ```sh
-gh repo create my-app --template ricardocasares/elm-neon-template --clone
+bun db watch                              # applies migrations/current.sql on every save
+bun db commit --message "Create users"    # turns it into a committed migration
 ```
 
-Then rename it: `name` in `package.json`, `<title>` in `index.html`, and the heading in
-`client/Main.elm`.
+## Deploy
 
-## Requirements
+1. Neon: a project with a `preview` branch off `main`.
+2. Vercel: `vercel link`, then add each branch's connection strings:
 
-- [Bun](https://bun.com) 1.4 or later
-- [Postgres.app](https://postgresapp.com) for the local database
-- [Docker](https://www.docker.com), to run Neon's HTTP proxy in front of it
-- For deploying: the [Vercel CLI](https://vercel.com/docs/cli), and the `neon` CLI through
-  `bunx neon@latest`
+   | Vercel     | Neon branch | `DATABASE_URL` | `DATABASE_URL_UNPOOLED` |
+   | ---------- | ----------- | -------------- | ----------------------- |
+   | Production | `main`      | pooled         | direct                  |
+   | Preview    | `preview`   | pooled         | direct                  |
 
-## Getting started
+3. `vercel deploy`, or `vercel deploy --prod`. Each build migrates its own branch first.
 
-```sh
-bun install
-cp .env.example .env
-```
+## More
 
-Set up the local database once. The server talks to Postgres through Neon's own HTTP proxy, as
-it does in production, so it needs a role with a password:
-
-```sh
-# Neon's HTTP proxy on http://localhost:4445/sql, in front of Postgres.app, in Docker.
-# bun dev starts it too, so this is only needed for psql and migrations before then.
-bun run dev:proxy
-
-# The app role and database (psql is in Postgres.app's bin folder).
-psql postgres://postgres@localhost:5432/postgres \
-  -c "SET scram_iterations = 1" \
-  -c "CREATE ROLE app LOGIN PASSWORD 'app'" \
-  -c "CREATE DATABASE app OWNER app"
-
-# The schema.
-bun db migrate
-```
-
-Then start the app on http://localhost:5173:
-
-```sh
-bun dev
-curl localhost:5173/api/health
-```
-
-## Commands
-
-| Command             | What it does                                                         |
-| ------------------- | -------------------------------------------------------------------- |
-| `bun dev`           | Start the proxy, then the app with the Elm server on `/api`          |
-| `bun run dev:proxy` | Start the local Neon HTTP proxy in Docker                            |
-| `bun run build`     | Type-check, then build into `dist/client` and `dist/server`          |
-| `bun run preview`   | Serve the build, with the built server on `/api`                     |
-| `bun check`         | Type-check the browser app and the server                            |
-| `bun fmt`           | Format everything except generated files (`--check` only reports)    |
-| `bun db <command>`  | Run [Graphile Migrate](https://github.com/graphile/migrate) commands |
-
-## Adding a route
-
-1. Add a constructor to `Api.Route` in `shared/Api.elm`, and handle it in `method`, `segments`
-   and `routesAt`.
-2. For a JSON route, add an `Endpoint` with the codecs for its body and response.
-3. Handle the route in `handle` in `api/src/Main.elm`: the server won't compile until you do.
-   Put its queries in `api/src/Db.elm`, and run them with `withDb`, which answers 503 when
-   there is no database and 500 when a query fails.
-4. Call it from the browser with `ApiClient.request`.
-
-## Changing the schema
-
-Write the change in `migrations/current.sql` while `bun db watch` applies it on every save,
-then commit it as a migration:
-
-```sh
-bun db watch
-bun db commit --message "Create users"
-```
-
-Keep `current.sql` idempotent (`IF NOT EXISTS`), because `watch` runs it again on each save.
-Never edit a file in `migrations/committed/`: add a new migration instead. `bun db status` lists
-what hasn't run yet, and `bun db reset --erase` rebuilds the local database from scratch (stop
-the proxy first with `docker stop neon-http-proxy`, and start it again with
-`bun run dev:proxy`).
-
-## Deploying
-
-1. Create a Neon project, with a `preview` branch off `main`:
-
-   ```sh
-   bunx neon@latest projects create --name my-app
-   bunx neon@latest branches create --name preview --project-id <project-id>
-   ```
-
-2. Create the Vercel project with `vercel link`, and set `regions` in `vercel.json` to the
-   Vercel region closest to your Neon region.
-3. Add the connection strings as environment variables. Use each branch's pooled connection
-   string (host with `-pooler`) for `DATABASE_URL`, and its direct one for
-   `DATABASE_URL_UNPOOLED`, which the build uses to migrate:
-
-   | Vercel environment | Neon branch | `DATABASE_URL` | `DATABASE_URL_UNPOOLED` |
-   | ------------------ | ----------- | -------------- | ----------------------- |
-   | Production         | `main`      | pooled         | direct                  |
-   | Preview            | `preview`   | pooled         | direct                  |
-
-   ```sh
-   vercel env add DATABASE_URL production --sensitive
-   vercel env add DATABASE_URL_UNPOOLED production --sensitive
-   vercel env add DATABASE_URL preview --sensitive
-   vercel env add DATABASE_URL_UNPOOLED preview --sensitive
-   ```
-
-4. Deploy:
-
-   ```sh
-   vercel deploy          # a preview, on Neon's `preview` branch
-   vercel deploy --prod   # production, on Neon's `main` branch
-   ```
-
-Each build applies pending migrations first, to its own branch: previews never migrate the
-production database.
-
-## Project layout
-
-```
-client/       the Elm browser app; client/UI/ holds the elmcn components
-api/          the Elm server: src/ (Elm), _ts/ (startup and dev glue), index.ts (Vercel Function)
-shared/       Elm modules both sides share
-migrations/   the database schema, as Graphile Migrate migrations
-```
-
-[AGENTS.md](AGENTS.md) has the full details: conventions, how the pieces connect, and the
-reasons behind them.
-
-## License
-
-[MIT](LICENSE)
+[AGENTS.md](AGENTS.md) has the conventions and the reasons behind them. License: [MIT](LICENSE).
