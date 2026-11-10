@@ -9,6 +9,7 @@
   "scripts": {
     "db": "bun node_modules/graphile-migrate/dist/cli.js",
     "dev": "bun run --parallel types dev:*",
+    "dev:proxy": "sh .scripts/neon.sh",
     "dev:vite": "bun node_modules/vite/bin/vite.js",
     "build": "bun run --sequential types:* check build:*",
     "build:vite": "vite build",

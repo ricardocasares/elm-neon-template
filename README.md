@@ -61,12 +61,9 @@ Set up the local database once. The server talks to Postgres through Neon's own 
 it does in production, so it needs a role with a password:
 
 ```sh
-# Neon's HTTP proxy on http://localhost:4445/sql, in front of Postgres.app.
-# One proxy serves every database on Postgres.app, so skip this if you already run one.
-docker run -d --name neon-http-proxy --restart unless-stopped -p 127.0.0.1:4445:4444 \
-  -e PGPASSWORD=trust \
-  -e PG_CONNECTION_STRING=postgres://postgres@host.docker.internal:5432/postgres \
-  ghcr.io/timowilhelm/local-neon-http-proxy:main
+# Neon's HTTP proxy on http://localhost:4445/sql, in front of Postgres.app, in Docker.
+# bun dev starts it too, so this is only needed for psql and migrations before then.
+bun run dev:proxy
 
 # The app role and database (psql is in Postgres.app's bin folder).
 psql postgres://postgres@localhost:5432/postgres \
@@ -87,14 +84,15 @@ curl localhost:5173/api/health
 
 ## Commands
 
-| Command            | What it does                                                         |
-| ------------------ | -------------------------------------------------------------------- |
-| `bun dev`          | The app with the Elm server on `/api`, reloading on every change     |
-| `bun run build`    | Type-check, then build into `dist/client` and `dist/server`          |
-| `bun run preview`  | Serve the build, with the built server on `/api`                     |
-| `bun check`        | Type-check the browser app and the server                            |
-| `bun fmt`          | Format everything except generated files (`--check` only reports)    |
-| `bun db <command>` | Run [Graphile Migrate](https://github.com/graphile/migrate) commands |
+| Command             | What it does                                                         |
+| ------------------- | -------------------------------------------------------------------- |
+| `bun dev`           | Start the proxy, then the app with the Elm server on `/api`          |
+| `bun run dev:proxy` | Start the local Neon HTTP proxy in Docker                            |
+| `bun run build`     | Type-check, then build into `dist/client` and `dist/server`          |
+| `bun run preview`   | Serve the build, with the built server on `/api`                     |
+| `bun check`         | Type-check the browser app and the server                            |
+| `bun fmt`           | Format everything except generated files (`--check` only reports)    |
+| `bun db <command>`  | Run [Graphile Migrate](https://github.com/graphile/migrate) commands |
 
 ## Adding a route
 
@@ -119,7 +117,8 @@ bun db commit --message "Create users"
 Keep `current.sql` idempotent (`IF NOT EXISTS`), because `watch` runs it again on each save.
 Never edit a file in `migrations/committed/`: add a new migration instead. `bun db status` lists
 what hasn't run yet, and `bun db reset --erase` rebuilds the local database from scratch (stop
-the proxy first with `docker stop neon-http-proxy`).
+the proxy first with `docker stop neon-http-proxy`, and start it again with
+`bun run dev:proxy`).
 
 ## Deploying
 

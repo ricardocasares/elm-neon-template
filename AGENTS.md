@@ -31,12 +31,19 @@ bun run preview     # the built app on :4173: dist/client/, with dist/server/app
 bun check           # type check the browser app and the server
 bun fmt             # format everything but generated files (--check only reports)
 bun db <command>    # graphile-migrate, see Database
+bun run dev:proxy   # start the local Neon proxy in Docker; bun dev runs it too
 ```
 
-`dev` runs `bun run types` alongside Vite. `build` runs `types:api` and `types:app` one
-after the other, then `check`, then `vite build`: on a fresh Vercel machine `~/.elm` is
-empty, and the two generators filling it at once corrupted `elm/json` ("PROBLEM BUILDING
-DEPENDENCIES"). elm-ts-interop still exits 0 then, so the build would carry on silently. `types` regenerates the TypeScript types for both Elm programs at once: `types:app` and `types:api`, through
+`dev` runs `bun run types`, `dev:proxy` and `dev:vite` (Vite) side by side.
+`dev:proxy` exits once the proxy runs. If it fails, which it does only when Docker is
+missing or not running or another container holds port 4445, `bun run --parallel` stops
+the others, so `bun dev` stops with it.
+
+`build` runs `types:api` and `types:app` one after the other, then `check`, then
+`vite build`: on a fresh Vercel machine `~/.elm` is empty, and the two generators filling
+it at once corrupted `elm/json` ("PROBLEM BUILDING DEPENDENCIES"). elm-ts-interop still
+exits 0 then, so the build would carry on silently. `types` regenerates the TypeScript
+types for both Elm programs at once: `types:app` and `types:api`, through
 `bun run --parallel types:*`. Run one on its own with `bun run types:api`. elm-ts-interop
 compiles with the `elm.json` of the folder it runs in, so `types:api` must `cd api`:
 from the root it would compile the browser's `InteropDefinitions` into
@@ -77,12 +84,7 @@ The local database is the `app` database on Postgres.app (`localhost:5432`), beh
 Neon's own HTTP proxy in Docker on `http://localhost:4445/sql`. Set it up once:
 
 ```sh
-# The proxy. It reaches Postgres.app at host.docker.internal and restarts with Docker.
-# It wants a password for its own connection; Postgres.app trusts local ones.
-docker run -d --name neon-http-proxy --restart unless-stopped -p 127.0.0.1:4445:4444 \
-  -e PGPASSWORD=trust \
-  -e PG_CONNECTION_STRING=postgres://postgres@host.docker.internal:5432/postgres \
-  ghcr.io/timowilhelm/local-neon-http-proxy:main
+bun run dev:proxy
 
 # The role and database. The proxy checks the password, so the role needs one. One
 # SCRAM iteration keeps that check at ~9 ms instead of ~100 ms per query: fine for
@@ -97,12 +99,23 @@ bun db migrate
 ```
 
 `psql` is Postgres.app's, in `/Applications/Postgres.app/Contents/Versions/latest/bin`.
+
+`dev:proxy` runs `.scripts/neon.sh`. If a container of the proxy image already publishes
+port 4445, it uses that one, whatever its name; otherwise it starts the
+`neon-http-proxy` container, creating it the first time with `--restart unless-stopped`.
+The proxy reaches Postgres.app at `host.docker.internal`, and wants a password for its
+own connection (`PGPASSWORD=trust`), which Postgres.app ignores for local ones. The script
+warns when nothing answers on `localhost:5432`: the proxy then answers every query with
+"Control plane request failed", which the server reports as `Neon answered with HTTP
+500`. Port 4445 must match `NEON_ENDPOINT` in `.env.example`.
+
 The proxy serves every database on Postgres.app, since each request carries its own
 connection string, so one container is enough for several projects. It keeps connections
 to `app` open, so `bun db reset --erase` fails with "being accessed by other users" while
-it runs: `docker stop neon-http-proxy` first, `docker start neon-http-proxy` after. Queries through the proxy take ~50 ms, the hop
-from Docker to the Mac. Committed files in `migrations/committed/` are signed with a
-hash: never edit them, add a new migration instead. The template ships with no
+it runs: `docker stop neon-http-proxy` first, `bun run dev:proxy` after. Queries through
+the proxy take ~50 ms, the hop from Docker to the Mac. Committed files in
+`migrations/committed/` are signed with a hash: never edit them, add a new migration
+instead. The template ships with no
 migrations: `/api/health` needs no tables.
 
 ### Environment
